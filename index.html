@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Squawk Panel</title>
+  <title>Transponder Panel</title>
   <style>
     body {
       background-color: #2b4a6e;
@@ -15,12 +15,46 @@
     }
 
     .panel {
+      display: flex;
+      gap: 30px;
       background-color: #2b4a6e;
-      border: 2px solid #000;
-      padding: 20px;
+      padding: 30px;
       border-radius: 8px;
-      color: #fff;
-      width: 300px;
+      border: 2px solid #000;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 60px);
+      gap: 10px;
+    }
+
+    .buttons button, .ident-button {
+      width: 60px;
+      height: 60px;
+      font-size: 1.5rem;
+      background-color: #1a1a1a;
+      color: white;
+      border: 2px solid #000;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .ident-button {
+      border: 2px solid white;
+      margin-top: 20px;
+    }
+
+    .buttons button:hover, .ident-button:hover {
+      background-color: #333;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
 
     .display {
@@ -28,96 +62,80 @@
       color: #ff7300;
       font-size: 2.5rem;
       text-align: center;
-      padding: 10px;
-      margin-bottom: 20px;
+      padding: 15px 25px;
       letter-spacing: 10px;
-    }
-
-    .buttons {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-
-    .buttons button, .actions button {
-      font-size: 1.5rem;
-      padding: 10px;
-      background-color: #1a1a1a;
-      color: white;
       border: 2px solid #000;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .buttons button:hover, .actions button:hover {
-      background-color: #333;
-    }
-
-    .actions {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 10px;
-    }
-
-    .ident-ring {
-      border: 2px solid #ccc;
-      border-radius: 50%;
-      padding: 5px 10px;
-      font-size: 1.2rem;
     }
   </style>
 </head>
 <body>
   <div class="panel">
-    <div class="display" id="squawkDisplay">2000</div>
-    
-    <div class="buttons">
-      <button onclick="enterDigit(1)">1</button>
-      <button onclick="enterDigit(2)">2</button>
-      <button onclick="enterDigit(3)">3</button>
-      <button onclick="enterDigit(4)">4</button>
-      <button onclick="enterDigit(5)">5</button>
-      <button onclick="enterDigit(6)">6</button>
-      <button onclick="enterDigit(7)">7</button>
-      <button onclick="enterDigit(0)">0</button>
-      <button onclick="clearLast()">CLR</button>
+    <div>
+      <div class="buttons">
+        <button onclick="enterDigit(1)">1</button>
+        <button onclick="enterDigit(2)">2</button>
+        <button onclick="enterDigit(3)">3</button>
+        <button onclick="enterDigit(4)">4</button>
+        <button onclick="enterDigit(5)">5</button>
+        <button onclick="enterDigit(6)">6</button>
+        <button onclick="enterDigit(7)">7</button>
+        <button onclick="enterDigit(0)">0</button>
+        <button onclick="clearSquawk()">CLR</button>
+      </div>
+      <button class="ident-button" onclick="confirmSquawk()">IDENT</button>
     </div>
 
-    <div class="actions">
-      <div class="ident-ring">
-        IDENT
-      </div>
-      <button onclick="confirmSquawk()">Enter</button>
+    <div class="right-panel">
+      <div class="display" id="squawkDisplay">2000</div>
     </div>
   </div>
 
   <script>
     let squawk = "2000";
+    let editing = false;
 
     function updateDisplay() {
       document.getElementById('squawkDisplay').innerText = squawk;
     }
 
     function enterDigit(digit) {
-      if (squawk.length >= 4) return;
-      squawk += digit;
-      squawk = squawk.slice(-4); // max 4 digits
+      if (!editing) return;
+      const blankCount = (squawk.match(/-/g) || []).length;
+      if (blankCount === 0) return;
+      squawk = squawk.replace('-', digit);
       updateDisplay();
     }
 
-    function clearLast() {
-      squawk = squawk.slice(0, -1);
-      if (squawk.length === 0) squawk = "0000";
+    function clearSquawk() {
+      squawk = "----";
+      editing = true;
       updateDisplay();
     }
 
     function confirmSquawk() {
-      console.log("Squawk set to:", squawk);
+      editing = false;
       alert("Squawk envoyé : " + squawk);
     }
 
-    updateDisplay();
+    window.onload = () => {
+      // Ask for callsign
+      const callsign = prompt("Entrez votre callsign (ex: AFR123):");
+      if (!callsign) return alert("Callsign requis pour utiliser le transpondeur.");
+
+      // Ask for position
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          console.log("Position obtenue:", position.coords.latitude, position.coords.longitude);
+          // Tu pourras ensuite envoyer latitude/longitude vers Firebase ici
+        }, err => {
+          alert("Impossible de récupérer la position.");
+        });
+      } else {
+        alert("La géolocalisation n'est pas supportée sur ce navigateur.");
+      }
+
+      updateDisplay();
+    }
   </script>
 </body>
 </html>
