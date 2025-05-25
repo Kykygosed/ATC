@@ -62,7 +62,7 @@
   </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, set, onDisconnect, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, set, onDisconnect, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -107,6 +107,8 @@
     }
 
     requestLocation();
+
+    onDisconnect(ref(db, "transponder/" + callsign)).remove();
 
     window.addEventListener("load", () => {
       const buttons = document.querySelectorAll(".keypad button");
