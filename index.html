@@ -55,6 +55,17 @@
     background: #f00;
     color: #fff;
   }
+  #enter {
+    grid-column: span 3;
+    background: #006600;
+    color: #fff;
+    margin-top: 10px;
+  }
+  #status {
+    margin-top: 20px;
+    font-size: 1.2rem;
+    min-height: 1.5em;
+  }
 </style>
 </head>
 <body>
@@ -76,11 +87,68 @@
   <button id="clear">Clear</button>
 </div>
 
+<button id="enter">Enter</button>
+
+<div id="status"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
+  // Ta config Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.firebasestorage.app",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let callsign = '';
+  let position = null;
+
+  // Demander callsign
+  function askCallsign() {
+    callsign = prompt("Entrez votre callsign :");
+    if (!callsign || callsign.trim() === '') {
+      alert("Le callsign est obligatoire.");
+      askCallsign();
+    } else {
+      callsign = callsign.trim().toUpperCase();
+      document.getElementById('status').textContent = `Callsign: ${callsign}`;
+      askPosition();
+    }
+  }
+
+  // Demander position
+  function askPosition() {
+    if (!navigator.geolocation) {
+      alert("Géolocalisation non supportée par ce navigateur.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        position = pos.coords;
+        document.getElementById('status').textContent += ` | Position acquise`;
+        console.log('Position:', position);
+      },
+      err => {
+        alert("Impossible d'obtenir la position : " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  // Transpondeur code
   const display = document.getElementById('display');
   const digits = document.querySelectorAll('.digit');
   const clearBtn = document.getElementById('clear');
   const backspaceBtn = document.getElementById('backspace');
+  const enterBtn = document.getElementById('enter');
 
   let squawkArray = ['-', '-', '-', '-'];
 
@@ -94,7 +162,6 @@
   }
 
   function addDigit(digit) {
-    // remplace le premier '-' par le digit
     const index = squawkArray.findIndex(c => c === '-');
     if (index !== -1) {
       squawkArray[index] = digit;
@@ -103,7 +170,6 @@
   }
 
   function backspace() {
-    // remplace le dernier chiffre par '-'
     for (let i = squawkArray.length - 1; i >= 0; i--) {
       if (squawkArray[i] !== '-') {
         squawkArray[i] = '-';
@@ -122,8 +188,38 @@
   clearBtn.addEventListener('click', clearSquawk);
   backspaceBtn.addEventListener('click', backspace);
 
-  // Initialisation
-  updateDisplay();
+  enterBtn.addEventListener('click', () => {
+    if (squawkArray.includes('-')) {
+      alert("Veuillez compléter le squawk à 4 chiffres avant d'envoyer.");
+      return;
+    }
+    const squawk = squawkArray.join('');
+    if (!callsign) {
+      alert("Callsign manquant.");
+      return;
+    }
+    if (!position) {
+      alert("Position non disponible.");
+      return;
+    }
+    // Envoyer dans Firebase
+    db.ref('transpondeurs/' + callsign).set({
+      callsign,
+      squawk,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      altitude: 0,    // tu pourras ajouter altitude en temps réel plus tard
+      speed: 0        // idem pour vitesse
+    }).then(() => {
+      alert("Squawk envoyé !");
+    }).catch(err => {
+      alert("Erreur lors de l'envoi : " + err.message);
+    });
+  });
+
+  // Init
+  clearSquawk();
+  askCallsign();
 </script>
 
 </body>
