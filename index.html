@@ -82,9 +82,16 @@
       border-radius: 50%;
     }
   </style>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, set, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import {
+      getDatabase,
+      ref,
+      set,
+      onDisconnect,
+      onValue
+    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -106,7 +113,6 @@
 
     const audioFail = new Audio("fail.mp3");
     const audioAlarm = new Audio("master_warning.mp3");
-
 
     function updateDisplay() {
       document.getElementById("squawkDisplay").innerText = currentSquawk;
@@ -149,20 +155,19 @@
     }
 
     window.addEventListener("load", () => {
-      callsign = prompt("Entrez votre indicatif (callsign):") || "UNKNOWN";
-import { onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+      callsign = prompt("Entrez votre indicatif (callsign):")?.trim().toUpperCase() || "UNKNOWN";
 
-const alarmRef = ref(db, `transponder/${callsign}/alarm`);
-onValue(alarmRef, snapshot => {
-  const alarm = snapshot.val();
-  if (alarm === true) {
-    audioAlarm.loop = true;
-    audioAlarm.play();
-  } else {
-    audioAlarm.pause();
-    audioAlarm.currentTime = 0;
-  }
-});
+      const alarmRef = ref(db, `transponder/${callsign}/alarm`);
+      onValue(alarmRef, snapshot => {
+        const alarm = snapshot.val();
+        if (alarm === true) {
+          audioAlarm.loop = true;
+          audioAlarm.play();
+        } else {
+          audioAlarm.pause();
+          audioAlarm.currentTime = 0;
+        }
+      });
 
       const buttons = document.querySelectorAll(".keypad button");
       buttons.forEach(btn => {
