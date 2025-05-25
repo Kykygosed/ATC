@@ -2,33 +2,99 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>ATC Map</title>
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transpondeur Squawk</title>
 <style>
-  #map { height: 100vh; }
-  .atc-label {
+  @font-face {
+    font-family: 'DS-Digital';
+    src: url('https://fonts.cdnfonts.com/s/11555/DS-DIGI.TTF') format('truetype');
     font-weight: bold;
-    color: limegreen;
-    text-align: center;
   }
-  .atc-label.emergency {
-    color: red;
-    font-weight: bolder;
+  body {
+    font-family: Arial, sans-serif;
+    background: #000;
+    color: #0f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 40px;
+  }
+  #display {
+    font-family: 'DS-Digital', monospace;
+    font-weight: bold;
+    font-size: 5rem;
+    background: #222;
+    border: 3px solid #0f0;
+    width: 220px;
+    text-align: center;
+    padding: 10px;
+    letter-spacing: 0.3em;
+    user-select: none;
+  }
+  #keyboard {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 70px);
+    grid-gap: 10px;
+  }
+  button {
+    font-size: 2rem;
+    background: #222;
+    border: 2px solid #0f0;
+    color: #0f0;
+    cursor: pointer;
+    padding: 10px 0;
+    user-select: none;
+  }
+  button:active {
+    background: #0f0;
+    color: #000;
+  }
+  #clear {
+    grid-column: span 3;
+    background: #f00;
+    color: #fff;
+  }
+  #enter {
+    grid-column: span 3;
+    background: #006600;
+    color: #fff;
+    margin-top: 10px;
+  }
+  #status {
+    margin-top: 20px;
+    font-size: 1.2rem;
+    min-height: 1.5em;
   }
 </style>
 </head>
 <body>
-<div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<div id="display">----</div>
 
+<div id="keyboard">
+  <button class="digit">0</button>
+  <button class="digit">1</button>
+  <button class="digit">2</button>
+  <button class="digit">3</button>
+  <button class="digit">4</button>
+  <button class="digit">5</button>
+  <button class="digit">6</button>
+  <button class="digit">7</button>
+  <button class="digit">8</button>
+  <button class="digit">9</button>
+  <button id="backspace">←</button>
+  <button id="clear">Clear</button>
+</div>
+
+<button id="enter">Enter</button>
+
+<div id="status"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-  // Config Firebase
+  // Ta config Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
     authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -42,72 +108,118 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  const map = L.map('map').setView([20, 0], 2); // Centré sur le globe
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
+  let callsign = '';
+  let position = null;
 
-  const markers = {};
-
-  function isEmergencySquawk(squawk) {
-    return ["7500", "7600", "7700"].includes(squawk);
+  // Demander callsign
+  function askCallsign() {
+    callsign = prompt("Entrez votre callsign :");
+    if (!callsign || callsign.trim() === '') {
+      alert("Le callsign est obligatoire.");
+      askCallsign();
+    } else {
+      callsign = callsign.trim().toUpperCase();
+      document.getElementById('status').textContent = `Callsign: ${callsign}`;
+      askPosition();
+    }
   }
 
-  function updateMarkers(data) {
-    const transpondeurs = data.val();
-    if (!transpondeurs) return;
+  // Demander position
+  function askPosition() {
+    if (!navigator.geolocation) {
+      alert("Géolocalisation non supportée par ce navigateur.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        position = pos.coords;
+        document.getElementById('status').textContent += ` | Position acquise`;
+        console.log('Position:', position);
+      },
+      err => {
+        alert("Impossible d'obtenir la position : " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
 
-    // Supprimer les markers qui ne sont plus présents
-    Object.keys(markers).forEach(callsign => {
-      if (!transpondeurs[callsign]) {
-        map.removeLayer(markers[callsign]);
-        delete markers[callsign];
-      }
-    });
+  // Transpondeur code
+  const display = document.getElementById('display');
+  const digits = document.querySelectorAll('.digit');
+  const clearBtn = document.getElementById('clear');
+  const backspaceBtn = document.getElementById('backspace');
+  const enterBtn = document.getElementById('enter');
 
-    for (const callsign in transpondeurs) {
-      const info = transpondeurs[callsign];
-      const { position, altitude, squawk, vitesse } = info;
+  let squawkArray = ['-', '-', '-', '-'];
 
-      if (!position) continue;
+  function updateDisplay() {
+    display.textContent = squawkArray.join('');
+  }
 
-      // Si marker existe déjà, update position et popup
-      if (markers[callsign]) {
-        markers[callsign].setLatLng([position.lat, position.lon]);
-        markers[callsign].setPopupContent(createPopupContent(info));
-        markers[callsign].getElement().className = isEmergencySquawk(squawk) ? 'emergency' : '';
-      } else {
-        // Création d'un marker personnalisé (divIcon)
-        const emergency = isEmergencySquawk(squawk);
-        const icon = L.divIcon({
-          className: 'custom-marker ' + (emergency ? 'emergency' : ''),
-          html: `<div style="width:12px;height:12px;border-radius:50%;background:${emergency ? 'red' : 'limegreen'};"></div>`
-        });
-        const marker = L.marker([position.lat, position.lon], { icon }).addTo(map);
-        marker.bindPopup(createPopupContent(info));
-        markers[callsign] = marker;
+  function clearSquawk() {
+    squawkArray = ['-', '-', '-', '-'];
+    updateDisplay();
+  }
+
+  function addDigit(digit) {
+    const index = squawkArray.findIndex(c => c === '-');
+    if (index !== -1) {
+      squawkArray[index] = digit;
+      updateDisplay();
+    }
+  }
+
+  function backspace() {
+    for (let i = squawkArray.length - 1; i >= 0; i--) {
+      if (squawkArray[i] !== '-') {
+        squawkArray[i] = '-';
+        updateDisplay();
+        break;
       }
     }
   }
 
-  function createPopupContent(info) {
-    const emergency = isEmergencySquawk(info.squawk);
-    return `
-      <div class="atc-label ${emergency ? 'emergency' : ''}">
-        <div>${info.callsign}</div>
-        <div>Alt: ${info.altitude} ft &nbsp; Squawk: ${info.squawk}</div>
-        <div style="color: ${emergency ? 'red' : 'limegreen'};">Speed: ${info.vitesse} kt</div>
-      </div>
-    `;
-  }
+  digits.forEach(btn => {
+    btn.addEventListener('click', () => {
+      addDigit(btn.textContent);
+    });
+  });
 
-  // Rafraîchissement toutes les 2s
-  setInterval(() => {
-    db.ref('transpondeurs').once('value').then(updateMarkers);
-  }, 2000);
+  clearBtn.addEventListener('click', clearSquawk);
+  backspaceBtn.addEventListener('click', backspace);
 
-  // Chargement initial
-  db.ref('transpondeurs').once('value').then(updateMarkers);
+  enterBtn.addEventListener('click', () => {
+    if (squawkArray.includes('-')) {
+      alert("Veuillez compléter le squawk à 4 chiffres avant d'envoyer.");
+      return;
+    }
+    const squawk = squawkArray.join('');
+    if (!callsign) {
+      alert("Callsign manquant.");
+      return;
+    }
+    if (!position) {
+      alert("Position non disponible.");
+      return;
+    }
+    // Envoyer dans Firebase
+    db.ref('transpondeurs/' + callsign).set({
+      callsign,
+      squawk,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      altitude: 0,    // tu pourras ajouter altitude en temps réel plus tard
+      speed: 0        // idem pour vitesse
+    }).then(() => {
+      alert("Squawk envoyé !");
+    }).catch(err => {
+      alert("Erreur lors de l'envoi : " + err.message);
+    });
+  });
+
+  // Init
+  clearSquawk();
+  askCallsign();
 </script>
 
 </body>
