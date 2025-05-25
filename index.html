@@ -105,7 +105,6 @@
     let position = {};
 
     const audioFail = new Audio("fail.mp3");
-    const failIndicator = document.getElementById("failIndicator");
 
     function updateDisplay() {
       document.getElementById("squawkDisplay").innerText = currentSquawk;
@@ -132,7 +131,6 @@
           position: position
         }).catch(triggerFail);
       } else {
-        // simulate disconnect
         set(ref(db, "transponder/" + callsign), null);
       }
     }
@@ -157,7 +155,11 @@
           if (btn.id === "clr") {
             currentSquawk = "----";
           } else if (btn.id === "ident") {
-            if (currentSquawk.length === 4 && !currentSquawk.includes("-")) saveData();
+            if (currentSquawk.length !== 4 || /[^0-9]/.test(currentSquawk)) {
+              triggerFail();
+            } else {
+              saveData();
+            }
           } else {
             if (currentSquawk.includes("-")) {
               currentSquawk = currentSquawk.replace("-", btn.innerText);
