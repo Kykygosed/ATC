@@ -20,13 +20,14 @@
       display: flex;
       gap: 30px;
       align-items: center;
+      position: relative;
     }
     .display {
       background-color: black;
       color: #ff6b00;
       font-family: 'DS-Digital', sans-serif;
       font-size: 48px;
-      width: 140px;
+      width: 160px;
       height: 60px;
       display: flex;
       justify-content: center;
@@ -59,17 +60,38 @@
       font-size: 12px;
       margin-top: -5px;
     }
+    .fail-indicator {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: black;
+      border: 2px solid #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+    .fail-indicator.active::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      background-color: yellow;
+      border-radius: 50%;
+    }
   </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, set, onDisconnect, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, set, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
       databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
       projectId: "kykychat-24c7f",
-      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      storageBucket: "kykychat-24c7f.appspot.com",
       messagingSenderId: "342562811927",
       appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
@@ -78,12 +100,29 @@
     const db = getDatabase(app);
 
     let currentSquawk = "----";
-    let callsign = prompt("Entrez votre callsign:");
+    let callsign = "";
     let positionEnabled = false;
     let position = {};
 
+    const audioFail = new Audio("fail.mp3");
+    const failIndicator = document.getElementById("failIndicator");
+
     function updateDisplay() {
       document.getElementById("squawkDisplay").innerText = currentSquawk;
+    }
+
+    function triggerFail() {
+      const indicator = document.getElementById("failIndicator");
+      indicator.classList.add("active");
+      audioFail.loop = true;
+      audioFail.play();
+    }
+
+    function clearFail() {
+      const indicator = document.getElementById("failIndicator");
+      indicator.classList.remove("active");
+      audioFail.pause();
+      audioFail.currentTime = 0;
     }
 
     function saveData() {
@@ -91,7 +130,10 @@
         set(ref(db, "transponder/" + callsign), {
           squawk: currentSquawk,
           position: position
-        });
+        }).catch(triggerFail);
+      } else {
+        // simulate disconnect
+        set(ref(db, "transponder/" + callsign), null);
       }
     }
 
@@ -103,21 +145,19 @@
         };
         positionEnabled = true;
         saveData();
-      });
+      }, triggerFail);
     }
 
-    requestLocation();
-
-    onDisconnect(ref(db, "transponder/" + callsign)).remove();
-
     window.addEventListener("load", () => {
+      callsign = prompt("Entrez votre indicatif (callsign):") || "UNKNOWN";
+
       const buttons = document.querySelectorAll(".keypad button");
       buttons.forEach(btn => {
         btn.addEventListener("click", () => {
           if (btn.id === "clr") {
             currentSquawk = "----";
           } else if (btn.id === "ident") {
-            if (currentSquawk.length === 4) saveData();
+            if (currentSquawk.length === 4 && !currentSquawk.includes("-")) saveData();
           } else {
             if (currentSquawk.includes("-")) {
               currentSquawk = currentSquawk.replace("-", btn.innerText);
@@ -126,6 +166,10 @@
           updateDisplay();
         });
       });
+
+      document.getElementById("failIndicator").addEventListener("click", clearFail);
+      requestLocation();
+      updateDisplay();
     });
   </script>
 </head>
@@ -149,6 +193,7 @@
       </div>
     </div>
     <div class="display" id="squawkDisplay">----</div>
+    <div id="failIndicator" class="fail-indicator" title="Erreur système"></div>
   </div>
 </body>
 </html>
