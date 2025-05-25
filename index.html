@@ -2,160 +2,128 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Transpondeur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transpondeur Squawk</title>
 <style>
   @font-face {
-    font-family: 'DS-DIGITAL';
-    src: url('https://fonts.cdnfonts.com/s/18310/DS-DIGI.TTF') format('truetype');
+    font-family: 'DS-Digital';
+    src: url('https://fonts.cdnfonts.com/s/11555/DS-DIGI.TTF') format('truetype');
+    font-weight: bold;
   }
   body {
+    font-family: Arial, sans-serif;
     background: #000;
     color: #0f0;
-    font-family: 'DS-DIGITAL', monospace;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    height: 100vh;
-    margin: 0;
+    margin-top: 40px;
   }
-  #squawk-display {
-    font-size: 4em;
-    border: 2px solid #0f0;
-    padding: 10px 20px;
-    margin-bottom: 20px;
-    width: 200px;
+  #display {
+    font-family: 'DS-Digital', monospace;
+    font-weight: bold;
+    font-size: 5rem;
+    background: #222;
+    border: 3px solid #0f0;
+    width: 220px;
     text-align: center;
-    letter-spacing: 10px;
+    padding: 10px;
+    letter-spacing: 0.3em;
+    user-select: none;
   }
-  #keypad {
+  #keyboard {
+    margin-top: 20px;
     display: grid;
     grid-template-columns: repeat(3, 70px);
-    gap: 10px;
+    grid-gap: 10px;
   }
   button {
-    font-size: 2em;
-    background: #111;
-    color: #0f0;
+    font-size: 2rem;
+    background: #222;
     border: 2px solid #0f0;
-    border-radius: 5px;
+    color: #0f0;
     cursor: pointer;
+    padding: 10px 0;
+    user-select: none;
   }
   button:active {
     background: #0f0;
     color: #000;
   }
+  #clear {
+    grid-column: span 3;
+    background: #f00;
+    color: #fff;
+  }
 </style>
 </head>
 <body>
 
-<div id="squawk-display">0000</div>
-<div id="keypad">
-  <button>0</button><button>1</button><button>2</button>
-  <button>3</button><button>4</button><button>5</button>
-  <button>6</button><button>7</button><button>Clear</button>
-  <button>Enter</button>
+<div id="display">----</div>
+
+<div id="keyboard">
+  <button class="digit">0</button>
+  <button class="digit">1</button>
+  <button class="digit">2</button>
+  <button class="digit">3</button>
+  <button class="digit">4</button>
+  <button class="digit">5</button>
+  <button class="digit">6</button>
+  <button class="digit">7</button>
+  <button class="digit">8</button>
+  <button class="digit">9</button>
+  <button id="backspace">←</button>
+  <button id="clear">Clear</button>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 <script>
-  // Config Firebase
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.firebasestorage.app",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
+  const display = document.getElementById('display');
+  const digits = document.querySelectorAll('.digit');
+  const clearBtn = document.getElementById('clear');
+  const backspaceBtn = document.getElementById('backspace');
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+  let squawkArray = ['-', '-', '-', '-'];
 
-  let callsign = null;
-  let squawk = "0000";
-  let position = null;
-  let altitude = 30000; // exemple
-  let vitesse = 450;    // exemple en noeuds
-
-  // Demander callsign
-  function askCallsign() {
-    let cs = prompt("Entrez votre callsign (ex: ABC123)");
-    if (!cs || cs.trim().length === 0) return askCallsign();
-    callsign = cs.trim().toUpperCase();
+  function updateDisplay() {
+    display.textContent = squawkArray.join('');
   }
 
-  // Demander géolocalisation
-  function askLocation() {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        alert("Géolocalisation non supportée.");
-        resolve(null);
-      } else {
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            resolve({
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude
-            });
-          },
-          err => {
-            alert("Impossible d'accéder à la position.");
-            resolve(null);
-          }
-        );
-      }
-    });
+  function clearSquawk() {
+    squawkArray = ['-', '-', '-', '-'];
+    updateDisplay();
   }
 
-  askCallsign();
+  function addDigit(digit) {
+    // remplace le premier '-' par le digit
+    const index = squawkArray.findIndex(c => c === '-');
+    if (index !== -1) {
+      squawkArray[index] = digit;
+      updateDisplay();
+    }
+  }
 
-  askLocation().then(pos => {
-    position = pos;
-
-    // Initial push sur Firebase
-    updateFirebase();
-
-    // Afficher squawk initial
-    document.getElementById('squawk-display').textContent = squawk;
-  });
-
-  // Gestion clavier
-  const display = document.getElementById('squawk-display');
-  const buttons = document.querySelectorAll('#keypad button');
-
-  buttons.forEach(button => {
-    button.addEventListener('click', () => {
-      let val = button.textContent;
-
-      if (val === "Clear") {
-        squawk = "0000";
-      } else if (val === "Enter") {
-        updateFirebase();
-        alert("Squawk mis à jour: " + squawk);
-      } else {
-        // On ajoute si moins de 4 chiffres
-        if (squawk.length < 4) {
-          // Remplacer le premier zéro de gauche
-          squawk = (squawk + val).slice(-4);
-        }
+  function backspace() {
+    // remplace le dernier chiffre par '-'
+    for (let i = squawkArray.length - 1; i >= 0; i--) {
+      if (squawkArray[i] !== '-') {
+        squawkArray[i] = '-';
+        updateDisplay();
+        break;
       }
-      display.textContent = squawk;
+    }
+  }
+
+  digits.forEach(btn => {
+    btn.addEventListener('click', () => {
+      addDigit(btn.textContent);
     });
   });
 
-  function updateFirebase() {
-    if (!callsign) return;
-    db.ref('transpondeurs/' + callsign).set({
-      squawk,
-      callsign,
-      position,
-      altitude,
-      vitesse
-    });
-  }
+  clearBtn.addEventListener('click', clearSquawk);
+  backspaceBtn.addEventListener('click', backspace);
+
+  // Initialisation
+  updateDisplay();
 </script>
 
 </body>
