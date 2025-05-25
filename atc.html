@@ -1,226 +1,108 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Transpondeur Squawk</title>
-<style>
-  @font-face {
-    font-family: 'DS-Digital';
-    src: url('https://fonts.cdnfonts.com/s/11555/DS-DIGI.TTF') format('truetype');
-    font-weight: bold;
-  }
-  body {
-    font-family: Arial, sans-serif;
-    background: #000;
-    color: #0f0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-top: 40px;
-  }
-  #display {
-    font-family: 'DS-Digital', monospace;
-    font-weight: bold;
-    font-size: 5rem;
-    background: #222;
-    border: 3px solid #0f0;
-    width: 220px;
-    text-align: center;
-    padding: 10px;
-    letter-spacing: 0.3em;
-    user-select: none;
-  }
-  #keyboard {
-    margin-top: 20px;
-    display: grid;
-    grid-template-columns: repeat(3, 70px);
-    grid-gap: 10px;
-  }
-  button {
-    font-size: 2rem;
-    background: #222;
-    border: 2px solid #0f0;
-    color: #0f0;
-    cursor: pointer;
-    padding: 10px 0;
-    user-select: none;
-  }
-  button:active {
-    background: #0f0;
-    color: #000;
-  }
-  #clear {
-    grid-column: span 3;
-    background: #f00;
-    color: #fff;
-  }
-  #enter {
-    grid-column: span 3;
-    background: #006600;
-    color: #fff;
-    margin-top: 10px;
-  }
-  #status {
-    margin-top: 20px;
-    font-size: 1.2rem;
-    min-height: 1.5em;
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>ATC Interface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #000;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+    .label {
+      color: #00ff00;
+      font-family: monospace;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+  </style>
 </head>
 <body>
+  <div id="map"></div>
 
-<div id="display">----</div>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
-<div id="keyboard">
-  <button class="digit">0</button>
-  <button class="digit">1</button>
-  <button class="digit">2</button>
-  <button class="digit">3</button>
-  <button class="digit">4</button>
-  <button class="digit">5</button>
-  <button class="digit">6</button>
-  <button class="digit">7</button>
-  <button class="digit">8</button>
-  <button class="digit">9</button>
-  <button id="backspace">←</button>
-  <button id="clear">Clear</button>
-</div>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
 
-<button id="enter">Enter</button>
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-<div id="status"></div>
+    const map = L.map('map').setView([48.85, 2.35], 6);
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script>
-  // Ta config Firebase
-  const firebaseConfig = {
-    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
-    authDomain: "kykychat-24c7f.firebaseapp.com",
-    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
-    projectId: "kykychat-24c7f",
-    storageBucket: "kykychat-24c7f.firebasestorage.app",
-    messagingSenderId: "342562811927",
-    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
-  };
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap & Carto',
+      maxZoom: 19
+    }).addTo(map);
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    const markers = {};
 
-  let callsign = '';
-  let position = null;
+    const transponderRef = ref(db, "transponder");
+    onValue(transponderRef, snapshot => {
+      const data = snapshot.val() || {};
 
-  // Demander callsign
-  function askCallsign() {
-    callsign = prompt("Entrez votre callsign :");
-    if (!callsign || callsign.trim() === '') {
-      alert("Le callsign est obligatoire.");
-      askCallsign();
-    } else {
-      callsign = callsign.trim().toUpperCase();
-      document.getElementById('status').textContent = `Callsign: ${callsign}`;
-      askPosition();
-    }
-  }
-
-  // Demander position
-  function askPosition() {
-    if (!navigator.geolocation) {
-      alert("Géolocalisation non supportée par ce navigateur.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        position = pos.coords;
-        document.getElementById('status').textContent += ` | Position acquise`;
-        console.log('Position:', position);
-      },
-      err => {
-        alert("Impossible d'obtenir la position : " + err.message);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  }
-
-  // Transpondeur code
-  const display = document.getElementById('display');
-  const digits = document.querySelectorAll('.digit');
-  const clearBtn = document.getElementById('clear');
-  const backspaceBtn = document.getElementById('backspace');
-  const enterBtn = document.getElementById('enter');
-
-  let squawkArray = ['-', '-', '-', '-'];
-
-  function updateDisplay() {
-    display.textContent = squawkArray.join('');
-  }
-
-  function clearSquawk() {
-    squawkArray = ['-', '-', '-', '-'];
-    updateDisplay();
-  }
-
-  function addDigit(digit) {
-    const index = squawkArray.findIndex(c => c === '-');
-    if (index !== -1) {
-      squawkArray[index] = digit;
-      updateDisplay();
-    }
-  }
-
-  function backspace() {
-    for (let i = squawkArray.length - 1; i >= 0; i--) {
-      if (squawkArray[i] !== '-') {
-        squawkArray[i] = '-';
-        updateDisplay();
-        break;
+      // Supprimer les anciens marqueurs
+      for (const key in markers) {
+        if (!data[key] || data[key].squawk === "0000") {
+          map.removeLayer(markers[key].marker);
+          map.removeLayer(markers[key].label);
+          delete markers[key];
+        }
       }
-    }
-  }
 
-  digits.forEach(btn => {
-    btn.addEventListener('click', () => {
-      addDigit(btn.textContent);
+      for (const callsign in data) {
+        const info = data[callsign];
+        const { lat, lng } = info.position || {};
+        if (!lat || !lng) continue;
+
+        const text = `${callsign} ${info.squawk || "----"} ALT? SPD?`;
+
+        if (!markers[callsign]) {
+          const marker = L.circleMarker([lat, lng], {
+            radius: 6,
+            color: "#00ff00",
+            fillColor: "#00ff00",
+            fillOpacity: 1
+          }).addTo(map);
+
+          const label = L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: '',
+              html: `<span class="label">${text}</span>`,
+              iconAnchor: [-5, -10]
+            }),
+            interactive: false
+          }).addTo(map);
+
+          marker.on('click', () => {
+            // Activer alarme sur le transpondeur distant
+            set(ref(db, `transponder/${callsign}/alarm`), true);
+          });
+
+          markers[callsign] = { marker, label };
+        } else {
+          markers[callsign].marker.setLatLng([lat, lng]);
+          markers[callsign].label.setLatLng([lat, lng]);
+        }
+      }
     });
-  });
-
-  clearBtn.addEventListener('click', clearSquawk);
-  backspaceBtn.addEventListener('click', backspace);
-
-  enterBtn.addEventListener('click', () => {
-    if (squawkArray.includes('-')) {
-      alert("Veuillez compléter le squawk à 4 chiffres avant d'envoyer.");
-      return;
-    }
-    const squawk = squawkArray.join('');
-    if (!callsign) {
-      alert("Callsign manquant.");
-      return;
-    }
-    if (!position) {
-      alert("Position non disponible.");
-      return;
-    }
-    // Envoyer dans Firebase
-    db.ref('transpondeurs/' + callsign).set({
-      callsign,
-      squawk,
-      latitude: position.latitude,
-      longitude: position.longitude,
-      altitude: 0,    // tu pourras ajouter altitude en temps réel plus tard
-      speed: 0        // idem pour vitesse
-    }).then(() => {
-      alert("Squawk envoyé !");
-    }).catch(err => {
-      alert("Erreur lors de l'envoi : " + err.message);
-    });
-  });
-
-  // Init
-  clearSquawk();
-  askCallsign();
-</script>
-
+  </script>
 </body>
 </html>
