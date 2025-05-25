@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>ATC Map</title>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<style>
+  #map { height: 100vh; }
+  .atc-label {
+    font-weight: bold;
+    color: limegreen;
+    text-align: center;
+  }
+  .atc-label.emergency {
+    color: red;
+    font-weight: bolder;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<script>
+  // Config Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+    authDomain: "kykychat-24c7f.firebaseapp.com",
+    databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+    projectId: "kykychat-24c7f",
+    storageBucket: "kykychat-24c7f.firebasestorage.app",
+    messagingSenderId: "342562811927",
+    appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const map = L.map('map').setView([20, 0], 2); // Centré sur le globe
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  const markers = {};
+
+  function isEmergencySquawk(squawk) {
+    return ["7500", "7600", "7700"].includes(squawk);
+  }
+
+  function updateMarkers(data) {
+    const transpondeurs = data.val();
+    if (!transpondeurs) return;
+
+    // Supprimer les markers qui ne sont plus présents
+    Object.keys(markers).forEach(callsign => {
+      if (!transpondeurs[callsign]) {
+        map.removeLayer(markers[callsign]);
+        delete markers[callsign];
+      }
+    });
+
+    for (const callsign in transpondeurs) {
+      const info = transpondeurs[callsign];
+      const { position, altitude, squawk, vitesse } = info;
+
+      if (!position) continue;
+
+      // Si marker existe déjà, update position et popup
+      if (markers[callsign]) {
+        markers[callsign].setLatLng([position.lat, position.lon]);
+        markers[callsign].setPopupContent(createPopupContent(info));
+        markers[callsign].getElement().className = isEmergencySquawk(squawk) ? 'emergency' : '';
+      } else {
+        // Création d'un marker personnalisé (divIcon)
+        const emergency = isEmergencySquawk(squawk);
+        const icon = L.divIcon({
+          className: 'custom-marker ' + (emergency ? 'emergency' : ''),
+          html: `<div style="width:12px;height:12px;border-radius:50%;background:${emergency ? 'red' : 'limegreen'};"></div>`
+        });
+        const marker = L.marker([position.lat, position.lon], { icon }).addTo(map);
+        marker.bindPopup(createPopupContent(info));
+        markers[callsign] = marker;
+      }
+    }
+  }
+
+  function createPopupContent(info) {
+    const emergency = isEmergencySquawk(info.squawk);
+    return `
+      <div class="atc-label ${emergency ? 'emergency' : ''}">
+        <div>${info.callsign}</div>
+        <div>Alt: ${info.altitude} ft &nbsp; Squawk: ${info.squawk}</div>
+        <div style="color: ${emergency ? 'red' : 'limegreen'};">Speed: ${info.vitesse} kt</div>
+      </div>
+    `;
+  }
+
+  // Rafraîchissement toutes les 2s
+  setInterval(() => {
+    db.ref('transpondeurs').once('value').then(updateMarkers);
+  }, 2000);
+
+  // Chargement initial
+  db.ref('transpondeurs').once('value').then(updateMarkers);
+</script>
+
+</body>
+</html>
