@@ -1,141 +1,152 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Transponder Panel</title>
+  <title>Transpondeur</title>
   <style>
     body {
-      background-color: #2b4a6e;
-      font-family: 'Courier New', Courier, monospace;
+      background-color: #2e3b4e;
+      font-family: sans-serif;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
-      margin: 0;
+      color: white;
     }
-
-    .panel {
+    .transponder {
+      background-color: #3c4b5a;
+      padding: 40px;
+      border-radius: 20px;
       display: flex;
       gap: 30px;
-      background-color: #2b4a6e;
-      padding: 30px;
-      border-radius: 8px;
-      border: 2px solid #000;
+      align-items: center;
     }
-
-    .buttons {
+    .display {
+      background-color: black;
+      color: #ff6b00;
+      font-family: 'DS-Digital', sans-serif;
+      font-size: 48px;
+      width: 140px;
+      height: 60px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border: 4px solid #888;
+      border-radius: 6px;
+    }
+    .keypad {
       display: grid;
       grid-template-columns: repeat(3, 60px);
       gap: 10px;
     }
-
-    .buttons button, .ident-button {
+    .keypad button {
       width: 60px;
       height: 60px;
-      font-size: 1.5rem;
-      background-color: #1a1a1a;
-      color: white;
-      border: 2px solid #000;
       border-radius: 50%;
+      background-color: #1f1f1f;
+      color: white;
+      font-size: 22px;
+      border: none;
       cursor: pointer;
     }
-
-    .ident-button {
-      border: 2px solid white;
-      margin-top: 20px;
-    }
-
-    .buttons button:hover, .ident-button:hover {
+    .keypad button:hover {
       background-color: #333;
     }
-
-    .right-panel {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
+    .ident-button {
+      border: 2px solid white;
     }
-
-    .display {
-      background-color: #1a1a1a;
-      color: #ff7300;
-      font-size: 2.5rem;
-      text-align: center;
-      padding: 15px 25px;
-      letter-spacing: 10px;
-      border: 2px solid #000;
+    .label-ident {
+      font-size: 12px;
+      margin-top: -5px;
     }
   </style>
-</head>
-<body>
-  <div class="panel">
-    <div>
-      <div class="buttons">
-        <button onclick="enterDigit(1)">1</button>
-        <button onclick="enterDigit(2)">2</button>
-        <button onclick="enterDigit(3)">3</button>
-        <button onclick="enterDigit(4)">4</button>
-        <button onclick="enterDigit(5)">5</button>
-        <button onclick="enterDigit(6)">6</button>
-        <button onclick="enterDigit(7)">7</button>
-        <button onclick="enterDigit(0)">0</button>
-        <button onclick="clearSquawk()">CLR</button>
-      </div>
-      <button class="ident-button" onclick="confirmSquawk()">IDENT</button>
-    </div>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, set, onDisconnect, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
-    <div class="right-panel">
-      <div class="display" id="squawkDisplay">0000</div>
-    </div>
-  </div>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.firebasestorage.app",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
 
-  <script>
-    let squawk = "2000";
-    let editing = false;
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let currentSquawk = "----";
+    let callsign = prompt("Entrez votre callsign:");
+    let positionEnabled = false;
+    let position = {};
 
     function updateDisplay() {
-      document.getElementById('squawkDisplay').innerText = squawk;
+      document.getElementById("squawkDisplay").innerText = currentSquawk;
     }
 
-    function enterDigit(digit) {
-      if (!editing) return;
-      const blankCount = (squawk.match(/-/g) || []).length;
-      if (blankCount === 0) return;
-      squawk = squawk.replace('-', digit);
-      updateDisplay();
-    }
-
-    function clearSquawk() {
-      squawk = "----";
-      editing = true;
-      updateDisplay();
-    }
-
-    function confirmSquawk() {
-      editing = false;
-      alert("Squawk envoyé : " + squawk);
-    }
-
-    window.onload = () => {
-      // Ask for callsign
-      const callsign = prompt("Entrez votre callsign (ex: AFR123):");
-      if (!callsign) return alert("Callsign requis pour utiliser le transpondeur.");
-
-      // Ask for position
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(position => {
-          console.log("Position obtenue:", position.coords.latitude, position.coords.longitude);
-          // Tu pourras ensuite envoyer latitude/longitude vers Firebase ici
-        }, err => {
-          alert("Impossible de récupérer la position.");
+    function saveData() {
+      if (currentSquawk !== "0000") {
+        set(ref(db, "transponder/" + callsign), {
+          squawk: currentSquawk,
+          position: position
         });
-      } else {
-        alert("La géolocalisation n'est pas supportée sur ce navigateur.");
       }
-
-      updateDisplay();
     }
+
+    function requestLocation() {
+      navigator.geolocation.getCurrentPosition(pos => {
+        position = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        };
+        positionEnabled = true;
+        saveData();
+      });
+    }
+
+    requestLocation();
+
+    window.addEventListener("load", () => {
+      const buttons = document.querySelectorAll(".keypad button");
+      buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (btn.id === "clr") {
+            currentSquawk = "----";
+          } else if (btn.id === "ident") {
+            if (currentSquawk.length === 4) saveData();
+          } else {
+            if (currentSquawk.includes("-")) {
+              currentSquawk = currentSquawk.replace("-", btn.innerText);
+            }
+          }
+          updateDisplay();
+        });
+      });
+    });
   </script>
+</head>
+<body>
+  <div class="transponder">
+    <div class="keypad">
+      <button>1</button>
+      <button>2</button>
+      <button>3</button>
+      <button>4</button>
+      <button>5</button>
+      <button>6</button>
+      <button>7</button>
+      <button>0</button>
+      <button>8</button>
+      <button>9</button>
+      <button id="clr">CLR</button>
+      <div>
+        <button id="ident" class="ident-button">●</button>
+        <div class="label-ident">IDENT</div>
+      </div>
+    </div>
+    <div class="display" id="squawkDisplay">----</div>
+  </div>
 </body>
 </html>
