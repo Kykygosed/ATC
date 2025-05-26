@@ -2,96 +2,36 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Transpondeur</title>
+  <title>ATC Interface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    body {
-      background-color: #2e3b4e;
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      color: white;
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #000;
     }
-    .transponder {
-      background-color: #3c4b5a;
-      padding: 40px;
-      border-radius: 20px;
-      display: flex;
-      gap: 30px;
-      align-items: center;
-      position: relative;
+    #map {
+      width: 100%;
+      height: 100%;
     }
-    .display {
-      background-color: black;
-      color: #ff6b00;
-      font-family: 'DS-Digital', sans-serif;
-      font-size: 48px;
-      width: 160px;
-      height: 60px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      border: 4px solid #888;
-      border-radius: 6px;
-    }
-    .keypad {
-      display: grid;
-      grid-template-columns: repeat(3, 60px);
-      gap: 10px;
-    }
-    .keypad button {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background-color: #1f1f1f;
-      color: white;
-      font-size: 22px;
-      border: none;
-      cursor: pointer;
-    }
-    .keypad button:hover {
-      background-color: #333;
-    }
-    .ident-button {
-      border: 2px solid white;
-    }
-    .label-ident {
+    .label {
+      color: #00ff00;
+      font-family: monospace;
       font-size: 12px;
-      margin-top: -5px;
-    }
-    .fail-indicator {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background-color: black;
-      border: 2px solid #222;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-    }
-    .fail-indicator.active::before {
-      content: "";
-      width: 12px;
-      height: 12px;
-      background-color: yellow;
-      border-radius: 50%;
+      margin-left: 8px;
     }
   </style>
+</head>
+<body>
+  <div id="map"></div>
+  <iframe id="alarmFrame" style="display:none;"></iframe>
 
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      set,
-      onDisconnect,
-      onValue
-    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -106,116 +46,90 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    let currentSquawk = "----";
-    let callsign = "";
-    let positionEnabled = false;
-    let position = {};
+    const map = L.map('map').setView([48.85, 2.35], 6);
 
-    const audioFail = new Audio("fail.mp3");
-    const audioAlarm = new Audio("master_warning.mp3");
+    L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(map);
 
-    function updateDisplay() {
-      document.getElementById("squawkDisplay").innerText = currentSquawk;
-    }
+    const markers = {};
+    const playedAlarms = new Set();
 
-    function triggerFail() {
-      const indicator = document.getElementById("failIndicator");
-      indicator.classList.add("active");
-      audioFail.loop = true;
-      audioFail.play();
-    }
+    function updateMap() {
+      const transponderRef = ref(db, "transponder");
+      onValue(transponderRef, snapshot => {
+        const data = snapshot.val() || {};
 
-    function clearFail() {
-      const indicator = document.getElementById("failIndicator");
-      indicator.classList.remove("active");
-      audioFail.pause();
-      audioFail.currentTime = 0;
-    }
-
-    function saveData() {
-      if (currentSquawk !== "0000") {
-        set(ref(db, "transponder/" + callsign), {
-          squawk: currentSquawk,
-          position: position
-        }).catch(triggerFail);
-      } else {
-        set(ref(db, "transponder/" + callsign), null);
-      }
-    }
-
-    function requestLocation() {
-      navigator.geolocation.getCurrentPosition(pos => {
-        position = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        };
-        positionEnabled = true;
-        saveData();
-      }, triggerFail);
-    }
-
-    window.addEventListener("load", () => {
-      callsign = prompt("Entrez votre indicatif (callsign):")?.trim().toUpperCase() || "UNKNOWN";
-
-      const alarmRef = ref(db, `transponder/${callsign}/alarm`);
-      onValue(alarmRef, snapshot => {
-        const alarm = snapshot.val();
-        if (alarm === true) {
-          audioAlarm.loop = true;
-          audioAlarm.play();
-        } else {
-          audioAlarm.pause();
-          audioAlarm.currentTime = 0;
+        for (const key in markers) {
+          if (!data[key] || data[key].squawk === "0000") {
+            map.removeLayer(markers[key].marker);
+            map.removeLayer(markers[key].label);
+            delete markers[key];
+          }
         }
-      });
 
-      const buttons = document.querySelectorAll(".keypad button");
-      buttons.forEach(btn => {
-        btn.addEventListener("click", () => {
-          if (btn.id === "clr") {
-            currentSquawk = "----";
-          } else if (btn.id === "ident") {
-            if (currentSquawk.length !== 4 || /[^0-9]/.test(currentSquawk)) {
-              triggerFail();
-            } else {
-              saveData();
+        for (const callsign in data) {
+          const info = data[callsign];
+          const { lat, lng } = info.position || {};
+          if (!lat || !lng) continue;
+
+          const squawk = info.squawk || "----";
+          const text = `${callsign} ${squawk} ALT? SPD?`;
+          const isEmergency = squawk === "7700";
+
+          if (!markers[callsign]) {
+            const marker = L.circleMarker([lat, lng], {
+              radius: 6,
+              color: isEmergency ? "#ff0000" : "#00ff00",
+              fillColor: isEmergency ? "#ff0000" : "#00ff00",
+              fillOpacity: 1
+            }).addTo(map);
+
+            const label = L.marker([lat, lng], {
+              icon: L.divIcon({
+                className: '',
+                html: `<span class="label">${text}</span>`,
+                iconAnchor: [-5, -10]
+              }),
+              interactive: false
+            }).addTo(map);
+
+            marker.on('click', () => {
+              set(ref(db, `transponder/${callsign}/alarm`), true);
+            });
+
+            markers[callsign] = { marker, label };
+
+            if (isEmergency && !playedAlarms.has(callsign)) {
+              document.getElementById('alarmFrame').src = 'fail.html';
+              playedAlarms.add(callsign);
             }
           } else {
-            if (currentSquawk.includes("-")) {
-              currentSquawk = currentSquawk.replace("-", btn.innerText);
+            markers[callsign].marker.setLatLng([lat, lng]);
+            markers[callsign].marker.setStyle({
+              color: isEmergency ? "#ff0000" : "#00ff00",
+              fillColor: isEmergency ? "#ff0000" : "#00ff00"
+            });
+            markers[callsign].label.setLatLng([lat, lng]);
+            markers[callsign].label.setIcon(L.divIcon({
+              className: '',
+              html: `<span class="label">${text}</span>`,
+              iconAnchor: [-5, -10]
+            }));
+
+            if (isEmergency && !playedAlarms.has(callsign)) {
+              document.getElementById('alarmFrame').src = 'fail.html';
+              playedAlarms.add(callsign);
             }
           }
-          updateDisplay();
-        });
-      });
+        }
+      }, { onlyOnce: true });
+    }
 
-      document.getElementById("failIndicator").addEventListener("click", clearFail);
-      requestLocation();
-      updateDisplay();
-    });
+    // Mise à jour automatique toutes les 5 secondes
+    setInterval(updateMap, 5000);
+    updateMap();
   </script>
-</head>
-<body>
-  <div class="transponder">
-    <div class="keypad">
-      <button>1</button>
-      <button>2</button>
-      <button>3</button>
-      <button>4</button>
-      <button>5</button>
-      <button>6</button>
-      <button>7</button>
-      <button>0</button>
-      <button>8</button>
-      <button>9</button>
-      <button id="clr">CLR</button>
-      <div>
-        <button id="ident" class="ident-button">●</button>
-        <div class="label-ident">IDENT</div>
-      </div>
-    </div>
-    <div class="display" id="squawkDisplay">----</div>
-    <div id="failIndicator" class="fail-indicator" title="Erreur système"></div>
-  </div>
 </body>
 </html>
