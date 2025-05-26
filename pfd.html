@@ -1,27 +1,142 @@
-<button onclick="requestOrientationAccess()">Activer le gyroscope</button>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>PFD DA-20</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: sans-serif;
+      color: white;
+    }
+
+    #pfd {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .horizon {
+      position: absolute;
+      width: 300%;
+      height: 300%;
+      top: -100%;
+      left: -100%;
+      background: linear-gradient(to bottom, #0077ff 50%, #996600 50%);
+      transition: transform 0.05s linear;
+    }
+
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      border: 3px solid #00fffc;
+      box-sizing: border-box;
+    }
+
+    .tape {
+      position: absolute;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      font-size: 20px;
+      text-align: center;
+      border-radius: 10px;
+    }
+
+    #speed {
+      top: 50%;
+      left: 10px;
+      transform: translateY(-50%);
+    }
+
+    #altitude {
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+    }
+
+    #recenterBtn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background: #00fffc;
+      color: black;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="pfd">
+  <div class="horizon" id="horizon"></div>
+  <div class="overlay"></div>
+  <div class="tape" id="speed">Vitesse: 0 m/s</div>
+  <div class="tape" id="altitude">Altitude: 0 m</div>
+  <button id="recenterBtn">Recentrer</button>
+</div>
 
 <script>
-function requestOrientationAccess() {
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+ demande une permission explicite
-    DeviceOrientationEvent.requestPermission()
-      .then(permissionState => {
-        if (permissionState === 'granted') {
-          window.addEventListener('deviceorientation', handleOrientation);
-        } else {
-          alert("Permission refusée pour l'accès à l'orientation.");
-        }
-      })
-      .catch(console.error);
-  } else {
-    // Android ou anciens navigateurs n'ont pas besoin de permission
-    window.addEventListener('deviceorientation', handleOrientation);
-  }
-}
+  let pitch = 0;
+  let roll = 0;
+  let heading = 0;
+  let horizon = document.getElementById("horizon");
+  let altitudeText = document.getElementById("altitude");
+  let speedText = document.getElementById("speed");
+  let recenterOffset = 0;
 
-function handleOrientation(event) {
-  console.log("Alpha:", event.alpha);
-  console.log("Beta :", event.beta);
-  console.log("Gamma:", event.gamma);
-}
+  // Recentrer
+  document.getElementById("recenterBtn").addEventListener("click", () => {
+    recenterOffset = pitch;
+  });
+
+  // Gyroscope
+  window.addEventListener("deviceorientation", (event) => {
+    let orientation = (screen.orientation || {}).angle || window.orientation || 0;
+
+    if (orientation === 90 || orientation === -90) {
+      // Paysage
+      pitch = event.gamma || 0;
+      roll = -event.beta || 0;
+    } else {
+      // Portrait
+      pitch = event.beta || 0;
+      roll = event.gamma || 0;
+    }
+
+    heading = event.alpha || 0;
+
+    // Mise à jour horizon
+    const adjustedPitch = pitch - recenterOffset;
+    horizon.style.transform = `
+      rotate(${roll}deg)
+      translateY(${adjustedPitch * 2}px)
+    `;
+  });
+
+  // Simulateur altitude / vitesse (remplace par de vrais capteurs si tu veux)
+  let simulatedAltitude = 0;
+  let simulatedSpeed = 0;
+
+  setInterval(() => {
+    simulatedSpeed = Math.abs(Math.sin(Date.now() / 1000)) * 40;
+    simulatedAltitude = Math.abs(Math.cos(Date.now() / 1500)) * 500;
+
+    altitudeText.innerText = "Altitude: " + simulatedAltitude.toFixed(0) + " m";
+    speedText.innerText = "Vitesse: " + simulatedSpeed.toFixed(0) + " m/s";
+  }, 500);
 </script>
+
+</body>
+</html>
