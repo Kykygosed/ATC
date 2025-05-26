@@ -3,96 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <title>Jeu RA Dessin Collaboratif</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-  <script src="https://rawcdn.githack.com/jeromeetienne/ar.js/3.3.2/aframe/build/aframe-ar.min.js"></script>
-  <style>
-    body, html {
-      margin: 0; padding: 0; overflow: hidden; background: #000;
-      font-family: monospace;
-      user-select: none;
-    }
-    #palette {
-      position: fixed;
-      bottom: 10px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.8);
-      border-radius: 8px;
-      padding: 8px 12px;
-      display: flex;
-      gap: 8px;
-      z-index: 10;
-    }
-    .color-btn, .erase-btn {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      border: 2px solid #aaa;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .color-btn.selected {
-      border-color: #fff;
-      box-shadow: 0 0 8px #fff;
-    }
-    .color-red { background: #ff4136; }
-    .color-green { background: #2ecc40; }
-    .color-blue { background: #0074d9; }
-    .color-yellow { background: #ffdc00; }
-    .color-white { background: #fff; }
-    .erase-btn {
-      background: #222;
-      color: #fff;
-      font-weight: bold;
-      font-size: 18px;
-      line-height: 0;
-      user-select: none;
-    }
-  </style>
-</head>
-<body>
-  <!-- Palette de couleurs et gomme -->
-  <div id="palette">
-    <div class="color-btn color-red" data-color="#ff4136" title="Rouge"></div>
-    <div class="color-btn color-green" data-color="#2ecc40" title="Vert"></div>
-    <div class="color-btn color-blue" data-color="#0074d9" title="Bleu"></div>
-    <div class="color-btn color-yellow" data-color="#ffdc00" title="Jaune"></div>
-    <div class="color-btn color-white" data-color="#fff" title="Blanc"></div>
-    <div class="erase-btn" title="Gomme">×</div>
-  </div>
-
-  <!-- Scène A-Frame avec AR.js -->
-  <a-scene
-    embedded
-    vr-mode-ui="enabled: false"
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="logarithmicDepthBuffer: true; antialias: true;"
-    loading-screen="enabled: false"
-  >
-    <!-- Caméra AR -->
-    <a-camera position="0 0 0" look-controls-enabled="true" wasd-controls-enabled="false"></a-camera>
-
-    <!-- Mur détecté par AR.js -->
-    <a-plane
-      id="wall"
-      position="0 1.6 -1"
-      rotation="-90 0 0"
-      width="2"
-      height="1.2"
-      color="#222"
-      material="opacity: 0.7; side: double"
-      visible="true"
-    ></a-plane>
-
-    <!-- Conteneur pour les dessins (enfants du mur) -->
-    <a-entity id="drawingsContainer"></a-entity>
-  </a-scene>
-
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.min.js"></script>
   <script type="module">
+    // Import Firebase modules
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, onValue, push, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
-    // Config Firebase (remplace par ta config si besoin)
+    // Config Firebase - remplace par ta config
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
@@ -106,159 +25,183 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Référence Firebase pour les dessins
-    const drawingsRef = ref(db, "ra_drawings");
+    window.firebaseDb = db; // rendre accessible globalement
+  </script>
 
-    const wall = document.querySelector("#wall");
-    const scene = document.querySelector("a-scene");
-    const drawingsContainer = document.querySelector("#drawingsContainer");
+  <style>
+    body, html {
+      margin: 0; padding: 0; overflow: hidden; height: 100vh; width: 100vw;
+      font-family: monospace;
+      background: #111;
+      color: white;
+      user-select: none;
+    }
+    #palette {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      padding: 10px;
+      border-radius: 8px;
+      display: flex;
+      gap: 10px;
+      z-index: 1000;
+    }
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      box-sizing: border-box;
+    }
+    .color-swatch.selected {
+      border-color: #fff;
+    }
+    #eraser {
+      width: 32px;
+      height: 32px;
+      background: url('https://cdn-icons-png.flaticon.com/512/1214/1214428.png') no-repeat center center;
+      background-size: 24px 24px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-radius: 6px;
+    }
+    #eraser.selected {
+      border-color: #fff;
+    }
+  </style>
+</head>
+<body>
 
-    // Palette et gomme
-    let currentColor = "#ff4136"; // rouge par défaut
+  <!-- Palette de couleurs + gomme -->
+  <div id="palette">
+    <div class="color-swatch selected" style="background:#ff0000" data-color="#ff0000"></div>
+    <div class="color-swatch" style="background:#00ff00" data-color="#00ff00"></div>
+    <div class="color-swatch" style="background:#0000ff" data-color="#0000ff"></div>
+    <div class="color-swatch" style="background:#ffff00" data-color="#ffff00"></div>
+    <div class="color-swatch" style="background:#00ffff" data-color="#00ffff"></div>
+    <div class="color-swatch" style="background:#ff00ff" data-color="#ff00ff"></div>
+    <div id="eraser" title="Gomme"></div>
+  </div>
+
+  <!-- Scene AR.js -->
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    arjs="sourceType: webcam; debugUIEnabled: true;"
+    id="ar-scene"
+  >
+    <!-- Une surface plane pour dessiner -->
+    <a-plane id="draw-plane" position="0 0 0" rotation="-90 0 0" width="3" height="2" color="#222" material="opacity:0.7; side:double;"></a-plane>
+
+    <!-- Caméra -->
+    <a-camera-static />
+  </a-scene>
+
+  <script type="module">
+    import { ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const db = window.firebaseDb;
+    const drawPlane = document.getElementById('draw-plane');
+    const sceneEl = document.querySelector('a-scene');
+    const palette = document.getElementById('palette');
+
+    let selectedColor = '#ff0000';
     let erasing = false;
 
-    // Setup palette
-    const palette = document.getElementById("palette");
-    palette.querySelectorAll(".color-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
+    // Gestion palette de couleur et gomme
+    palette.addEventListener('click', (e) => {
+      if (e.target.classList.contains('color-swatch')) {
         erasing = false;
-        currentColor = btn.getAttribute("data-color");
-        palette.querySelectorAll(".color-btn").forEach(b => b.classList.remove("selected"));
-        btn.classList.add("selected");
-      });
+        selectedColor = e.target.dataset.color;
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+        document.getElementById('eraser').classList.remove('selected');
+        e.target.classList.add('selected');
+      }
+      if (e.target.id === 'eraser') {
+        erasing = true;
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+        e.target.classList.add('selected');
+      }
     });
-    // Sélection initiale
-    palette.querySelector(".color-btn").classList.add("selected");
 
-    palette.querySelector(".erase-btn").addEventListener("click", () => {
-      erasing = true;
-      palette.querySelectorAll(".color-btn").forEach(b => b.classList.remove("selected"));
-    });
-
-    // Fonction pour créer un point sur le mur
-    function createPoint(x, y, color, key) {
-      const point = document.createElement("a-sphere");
-      point.setAttribute("position", `${x} ${y} 0.01`); // légèrement devant le mur
-      point.setAttribute("radius", "0.015");
-      point.setAttribute("color", color);
-      point.setAttribute("key", key || "");
-      return point;
+    // Fonction pour créer un dessin dans Firebase
+    function addDrawPoint(x, y) {
+      const pointsRef = ref(db, 'drawPoints');
+      const pointData = {
+        x: x,
+        y: y,
+        color: erasing ? null : selectedColor,
+        timestamp: Date.now()
+      };
+      push(pointsRef, pointData);
     }
 
-    // Charger dessins depuis Firebase et afficher
-    let firebasePoints = {}; // key => a-sphere element
+    // Convertir un point du plan à coord A-Frame
+    function getPlaneCoords(intersection) {
+      // intersection point en world coords
+      // converti à coords locales du plan
+      const plane = drawPlane.object3D;
+      const point = intersection.point.clone();
+      plane.worldToLocal(point);
+      // Le plane a width=3, height=2, centré en 0,0
+      // coords de -1.5 à +1.5 sur X, -1 à +1 sur Y
+      return { x: point.x, y: point.z };
+    }
 
-    onValue(drawingsRef, (snapshot) => {
-      const data = snapshot.val() || {};
+    // Click ou touch sur le plan pour dessiner
+    sceneEl.addEventListener('click', (evt) => {
+      const intersection = evt.detail.intersection;
+      if (!intersection) return;
 
-      // Supprimer points disparus
-      for (const key in firebasePoints) {
-        if (!data[key]) {
-          drawingsContainer.removeChild(firebasePoints[key]);
-          delete firebasePoints[key];
+      const coords = getPlaneCoords(intersection);
+      addDrawPoint(coords.x, coords.y);
+    });
+
+    // Charger et afficher les points depuis Firebase
+    const pointsRef = ref(db, 'drawPoints');
+    let pointsEntities = {};
+
+    onValue(pointsRef, (snapshot) => {
+      const points = snapshot.val() || {};
+
+      // Supprimer points supprimés (color null)
+      for (const key in pointsEntities) {
+        if (!points[key] || points[key].color === null) {
+          sceneEl.removeChild(pointsEntities[key]);
+          delete pointsEntities[key];
         }
       }
 
-      // Ajouter / mettre à jour points
-      for (const key in data) {
-        const d = data[key];
-        if (!firebasePoints[key]) {
-          const pt = createPoint(d.x, d.y, d.color, key);
-          wall.appendChild(pt);
-          firebasePoints[key] = pt;
+      for (const key in points) {
+        const pt = points[key];
+        if (pt.color === null) {
+          // Point effacé
+          if (pointsEntities[key]) {
+            sceneEl.removeChild(pointsEntities[key]);
+            delete pointsEntities[key];
+          }
+          continue;
+        }
+        if (!pointsEntities[key]) {
+          // Créer un petit cube pour chaque point
+          const el = document.createElement('a-box');
+          el.setAttribute('depth', 0.02);
+          el.setAttribute('height', 0.02);
+          el.setAttribute('width', 0.02);
+          el.setAttribute('color', pt.color);
+          el.setAttribute('position', `${pt.x} 0.01 ${pt.y}`);
+          sceneEl.appendChild(el);
+          pointsEntities[key] = el;
         } else {
-          // Mise à jour position ou couleur si besoin (optionnel)
+          // Met à jour la position et couleur si besoin
+          pointsEntities[key].setAttribute('position', `${pt.x} 0.01 ${pt.y}`);
+          pointsEntities[key].setAttribute('color', pt.color);
         }
       }
     });
-
-    // Calculer position relative sur le mur quand on clique/touche
-    function getRelativePosition(event) {
-      // On récupère la position du clic en coordonnées écran
-      const touch = event.touches ? event.touches[0] : event;
-      const mouse = { x: touch.clientX, y: touch.clientY };
-
-      // Raycaster A-Frame
-      const camera = scene.camera.el.getObject3D('camera');
-      const raycaster = new THREE.Raycaster();
-
-      // Normaliser coordonnées écran
-      const rect = scene.canvas.getBoundingClientRect();
-      const mouseX = ((mouse.x - rect.left) / rect.width) * 2 - 1;
-      const mouseY = -((mouse.y - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
-
-      // Mur : plan avec rotation -90° sur X
-      const wallEl = wall.object3D;
-      const intersects = raycaster.intersectObject(wallEl, true);
-
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-
-        // On veut coords locales par rapport au centre du mur
-        const localPos = wallEl.worldToLocal(point);
-
-        // Le mur fait 2m de large et 1.2m de haut
-        // X local entre -1 et 1, Y local entre -0.6 et 0.6
-        // On ramène à -1..1 sur X et Y
-        let xNorm = localPos.x; // entre -1 et 1 (à peu près)
-        let yNorm = localPos.y; // entre -0.6 et 0.6
-
-        // On limite à l'intérieur du mur
-        xNorm = Math.min(1, Math.max(-1, xNorm));
-        yNorm = Math.min(0.6, Math.max(-0.6, yNorm));
-
-        // Pour stocker on veut 0..1
-        return {
-          x: (xNorm + 1) / 2,
-          y: (yNorm + 0.6) / 1.2,
-        };
-      }
-      return null;
-    }
-
-    // Ajouter un dessin dans Firebase
-    function addDrawing(x, y, color) {
-      const newKey = push(drawingsRef).key;
-      set(ref(db, `ra_drawings/${newKey}`), {
-        x, y, color
-      });
-    }
-
-    // Enlever un dessin proche (effacer)
-    // On vérifie la distance (dans coord normalisées) à chaque point
-    function eraseDrawing(x, y) {
-      for (const key in firebasePoints) {
-        const pt = firebasePoints[key];
-        const pos = pt.getAttribute("position");
-        // Convertir pos x,y en normalisé 0..1 comme stocké
-        let px = (pos.x + 1) / 2;
-        let py = (pos.y + 0.6) / 1.2;
-        const dist = Math.sqrt((px - x) ** 2 + (py - y) ** 2);
-        if (dist < 0.05) { // seuil d’effacement
-          remove(ref(db, `ra_drawings/${key}`));
-          break;
-        }
-      }
-    }
-
-    // Gestion clic / toucher sur le mur
-    function onDraw(event) {
-      event.preventDefault();
-      const pos = getRelativePosition(event);
-      if (!pos) return;
-      if (erasing) {
-        eraseDrawing(pos.x, pos.y);
-      } else {
-        addDrawing(pos.x, pos.y, currentColor);
-      }
-    }
-
-    // Événements souris + tactile
-    scene.canvas.addEventListener("click", onDraw);
-    scene.canvas.addEventListener("touchstart", onDraw);
-
   </script>
+
 </body>
 </html>
