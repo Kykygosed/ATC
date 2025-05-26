@@ -1,16 +1,12 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>ATC Interface</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet/dist/leaflet.css"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       height: 100%;
@@ -25,157 +21,115 @@
       font-family: monospace;
       font-size: 12px;
       margin-left: 8px;
-      user-select: none;
-      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <iframe id="alarmFrame" style="display:none;"></iframe>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      onValue,
-      off,
-      set,
-    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
       authDomain: "kykychat-24c7f.firebaseapp.com",
-      databaseURL:
-        "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
       projectId: "kykychat-24c7f",
       storageBucket: "kykychat-24c7f.appspot.com",
       messagingSenderId: "342562811927",
-      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const map = L.map("map").setView([48.85, 2.35], 6);
+    const map = L.map('map').setView([48.85, 2.35], 6);
 
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      {
-        attribution: "&copy; OpenStreetMap & Carto",
-        maxZoom: 19,
-      }
-    ).addTo(map);
+    L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(map);
 
     const markers = {};
-    const blinkIntervals = {};
+    const playedAlarms = new Set();
 
-    const transponderRef = ref(db, "transponder");
-
-    function updateMarkers(data) {
-      // Supprimer les anciens marqueurs
-      for (const key in markers) {
-        if (!data[key] || data[key].squawk === "0000") {
-          if (blinkIntervals[key]) {
-            clearInterval(blinkIntervals[key]);
-            delete blinkIntervals[key];
-          }
-          map.removeLayer(markers[key].marker);
-          map.removeLayer(markers[key].label);
-          delete markers[key];
-        }
-      }
-
-      for (const callsign in data) {
-        const info = data[callsign];
-        const pos = info.position || {};
-        const lat = pos.lat;
-        const lng = pos.lng;
-
-        if (!lat || !lng) continue;
-
-        const text = `${callsign} ${info.squawk || "----"} ALT? SPD?`;
-
-        if (!markers[callsign]) {
-          const marker = L.circleMarker([lat, lng], {
-            radius: 6,
-            color: "#00ff00",
-            fillColor: "#00ff00",
-            fillOpacity: 1,
-          }).addTo(map);
-
-          const label = L.marker([lat, lng], {
-            icon: L.divIcon({
-              className: "",
-              html: `<span class="label">${text}</span>`,
-              iconAnchor: [-5, -10],
-            }),
-            interactive: false,
-          }).addTo(map);
-
-          marker.on("click", () => {
-            set(ref(db, `transponder/${callsign}/alarm`), true);
-          });
-
-          markers[callsign] = { marker, label };
-        } else {
-          markers[callsign].marker.setLatLng([lat, lng]);
-          markers[callsign].label.setLatLng([lat, lng]);
-          markers[callsign].label.getElement().querySelector(
-            ".label"
-          ).innerHTML = text;
-        }
-
-        // Clignotement si squawk 7700
-        if (info.squawk === "7700") {
-          if (!blinkIntervals[callsign]) {
-            let visible = true;
-            blinkIntervals[callsign] = setInterval(() => {
-              visible = !visible;
-              markers[callsign].marker.setStyle({
-                color: visible ? "red" : "#000",
-                fillColor: visible ? "red" : "#000",
-              });
-              const labelEl = markers[callsign].label.getElement().querySelector(
-                ".label"
-              );
-              labelEl.style.color = visible ? "red" : "transparent";
-            }, 500);
-          }
-        } else {
-          if (blinkIntervals[callsign]) {
-            clearInterval(blinkIntervals[callsign]);
-            delete blinkIntervals[callsign];
-            markers[callsign].marker.setStyle({
-              color: "#00ff00",
-              fillColor: "#00ff00",
-            });
-            const labelEl = markers[callsign].label.getElement().querySelector(
-              ".label"
-            );
-            labelEl.style.color = "#00ff00";
-          }
-        }
-      }
-    }
-
-    let unsubscribe;
-
-    function subscribe() {
-      unsubscribe = onValue(transponderRef, (snapshot) => {
+    function updateMap() {
+      const transponderRef = ref(db, "transponder");
+      onValue(transponderRef, snapshot => {
         const data = snapshot.val() || {};
-        updateMarkers(data);
-      });
+
+        for (const key in markers) {
+          if (!data[key] || data[key].squawk === "0000") {
+            map.removeLayer(markers[key].marker);
+            map.removeLayer(markers[key].label);
+            delete markers[key];
+          }
+        }
+
+        for (const callsign in data) {
+          const info = data[callsign];
+          const { lat, lng } = info.position || {};
+          if (!lat || !lng) continue;
+
+          const squawk = info.squawk || "----";
+          const text = `${callsign} ${squawk} ALT? SPD?`;
+          const isEmergency = squawk === "7700";
+
+          if (!markers[callsign]) {
+            const marker = L.circleMarker([lat, lng], {
+              radius: 6,
+              color: isEmergency ? "#ff0000" : "#00ff00",
+              fillColor: isEmergency ? "#ff0000" : "#00ff00",
+              fillOpacity: 1
+            }).addTo(map);
+
+            const label = L.marker([lat, lng], {
+              icon: L.divIcon({
+                className: '',
+                html: `<span class="label">${text}</span>`,
+                iconAnchor: [-5, -10]
+              }),
+              interactive: false
+            }).addTo(map);
+
+            marker.on('click', () => {
+              set(ref(db, `transponder/${callsign}/alarm`), true);
+            });
+
+            markers[callsign] = { marker, label };
+
+            if (isEmergency && !playedAlarms.has(callsign)) {
+              document.getElementById('alarmFrame').src = 'fail.html';
+              playedAlarms.add(callsign);
+            }
+          } else {
+            markers[callsign].marker.setLatLng([lat, lng]);
+            markers[callsign].marker.setStyle({
+              color: isEmergency ? "#ff0000" : "#00ff00",
+              fillColor: isEmergency ? "#ff0000" : "#00ff00"
+            });
+            markers[callsign].label.setLatLng([lat, lng]);
+            markers[callsign].label.setIcon(L.divIcon({
+              className: '',
+              html: `<span class="label">${text}</span>`,
+              iconAnchor: [-5, -10]
+            }));
+
+            if (isEmergency && !playedAlarms.has(callsign)) {
+              document.getElementById('alarmFrame').src = 'fail.html';
+              playedAlarms.add(callsign);
+            }
+          }
+        }
+      }, { onlyOnce: true });
     }
 
-    subscribe();
-
-    // Actualisation forcée toutes les 5s (optionnel)
-    setInterval(() => {
-      if (unsubscribe) off(transponderRef, "value", unsubscribe);
-      subscribe();
-    }, 5000);
+    // Mise à jour automatique toutes les 5 secondes
+    setInterval(updateMap, 5000);
+    updateMap();
   </script>
 </body>
 </html>
