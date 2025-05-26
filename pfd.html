@@ -1,161 +1,27 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <title>PFD - DA20 Homemade</title>
-  <style>
-    html, body {
-      margin: 0;
-      background: #000;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-      color: #0ff;
-    }
-    .pfd-container {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-    }
-    .horizon {
-      position: absolute;
-      width: 200%;
-      height: 200%;
-      top: -50%;
-      left: -50%;
-      background: linear-gradient(to top, #704214 50%, #3399ff 50%);
-      transform-origin: center center;
-      z-index: 1;
-    }
-    .crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 40px;
-      height: 2px;
-      background: red;
-      z-index: 3;
-      transform: translate(-50%, -50%);
-    }
-    .pitch-lines {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      z-index: 2;
-      pointer-events: none;
-    }
-    .pitch-line {
-      position: absolute;
-      left: 25%;
-      width: 50%;
-      height: 1px;
-      background: white;
-      opacity: 0.5;
-    }
-    .ribbon {
-      position: absolute;
-      width: 60px;
-      height: 200px;
-      background: rgba(0, 0, 0, 0.6);
-      color: #0ff;
-      padding: 5px;
-      font-size: 16px;
-      z-index: 4;
-      overflow: hidden;
-    }
-    .speed {
-      left: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    .altitude {
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      text-align: right;
-    }
-    .heading {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 24px;
-      z-index: 5;
-    }
-    .recenter-btn {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      z-index: 6;
-      background: rgba(255,255,255,0.1);
-      border: 1px solid #0ff;
-      color: #0ff;
-      padding: 10px 20px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-  </style>
-</head>
-<body>
-  <div class="pfd-container">
-    <div id="horizon" class="horizon"></div>
-    <div class="pitch-lines" id="pitch-lines"></div>
-    <div class="crosshair"></div>
-    <div class="ribbon speed" id="speed">V: 0 m/s</div>
-    <div class="ribbon altitude" id="altitude">ALT: 0 m</div>
-    <div class="heading" id="heading">HDG: 0°</div>
-    <button class="recenter-btn" id="recenter">Recentrer</button>
-  </div>
+<button onclick="requestOrientationAccess()">Activer le gyroscope</button>
 
-  <script>
-    let pitch = 0, roll = 0, heading = 0;
-    let horizon = document.getElementById("horizon");
-    let speedEl = document.getElementById("speed");
-    let altEl = document.getElementById("altitude");
-    let headingEl = document.getElementById("heading");
-    let pitchLinesContainer = document.getElementById("pitch-lines");
+<script>
+function requestOrientationAccess() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ demande une permission explicite
+    DeviceOrientationEvent.requestPermission()
+      .then(permissionState => {
+        if (permissionState === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation);
+        } else {
+          alert("Permission refusée pour l'accès à l'orientation.");
+        }
+      })
+      .catch(console.error);
+  } else {
+    // Android ou anciens navigateurs n'ont pas besoin de permission
+    window.addEventListener('deviceorientation', handleOrientation);
+  }
+}
 
-    // Génére les lignes de pitch (fictives)
-    for (let i = -90; i <= 90; i += 10) {
-      let line = document.createElement("div");
-      line.className = "pitch-line";
-      line.style.top = `calc(50% - ${i * 2}px)`;
-      line.textContent = (i === 0) ? "0" : "";
-      pitchLinesContainer.appendChild(line);
-    }
-
-    // Simuler données vitesse et altitude
-    let speed = 0;
-    let altitude = 0;
-    setInterval(() => {
-      speed = (Math.random() * 40).toFixed(1);
-      altitude += Math.random() * 2 - 1;
-      speedEl.textContent = `V: ${speed} m/s`;
-      altEl.textContent = `ALT: ${altitude.toFixed(1)} m`;
-    }, 500);
-
-    // Gyroscope (pitch/roll/heading)
-    window.addEventListener("deviceorientation", (event) => {
-      pitch = event.beta || 0;   // avant/arrière
-      roll = event.gamma || 0;   // inclinaison
-      heading = event.alpha || 0; // cap
-    });
-
-    function updatePFD() {
-      horizon.style.transform = `rotateZ(${-roll}deg) translateY(${pitch * 2}px)`;
-      headingEl.textContent = `HDG: ${Math.round(heading)}°`;
-      requestAnimationFrame(updatePFD);
-    }
-
-    updatePFD();
-
-    // Bouton Recentrer
-    document.getElementById("recenter").addEventListener("click", () => {
-      pitch = 0;
-      roll = 0;
-    });
-  </script>
-</body>
-</html>
+function handleOrientation(event) {
+  console.log("Alpha:", event.alpha);
+  console.log("Beta :", event.beta);
+  console.log("Gamma:", event.gamma);
+}
+</script>
