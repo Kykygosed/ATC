@@ -26,44 +26,8 @@
       height: 300%;
       top: -100%;
       left: -100%;
-      background: linear-gradient(to bottom, #0077ff 50%, #996600 50%);
+      background: linear-gradient(to bottom, #0077ff 50%, white 50%, #996600 50.5%);
       transition: transform 0.05s linear;
-    }
-
-    .separator-line {
-      position: absolute;
-      top: 50%;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: white;
-      z-index: 2;
-    }
-
-    .pitch-lines {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      z-index: 2;
-    }
-
-    .pitch-line {
-      position: absolute;
-      left: 50%;
-      width: 60px;
-      height: 2px;
-      background: white;
-      transform: translateX(-50%);
-    }
-
-    .pitch-label {
-      position: absolute;
-      left: 52%;
-      color: white;
-      font-size: 12px;
     }
 
     .overlay {
@@ -75,21 +39,6 @@
       pointer-events: none;
       border: 3px solid #00fffc;
       box-sizing: border-box;
-    }
-
-    .crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 80px;
-      height: 30px;
-      transform: translate(-50%, -50%);
-      z-index: 3;
-    }
-
-    .crosshair svg {
-      width: 100%;
-      height: 100%;
     }
 
     .tape {
@@ -126,6 +75,38 @@
       cursor: pointer;
       z-index: 10;
     }
+
+    .pitch-lines {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .pitch-line {
+      position: absolute;
+      width: 80px;
+      height: 4px;
+      background: white;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 80px;
+      height: 80px;
+      transform: translate(-50%, -50%);
+      background: url('IMG_8914.png') no-repeat center center;
+      background-size: contain;
+      pointer-events: none;
+      z-index: 6;
+    }
   </style>
 </head>
 <body>
@@ -133,14 +114,7 @@
 <div id="pfd">
   <div class="horizon" id="horizon"></div>
   <div class="pitch-lines" id="pitchLines"></div>
-  <div class="separator-line"></div>
-  <div class="crosshair">
-    <svg viewBox="0 0 100 100">
-      <rect x="10" y="45" width="30" height="10" fill="white" />
-      <rect x="45" y="35" width="10" height="30" fill="white" />
-      <rect x="60" y="45" width="30" height="10" fill="white" />
-    </svg>
-  </div>
+  <div class="crosshair"></div>
   <div class="overlay"></div>
   <div class="tape" id="speed">Vitesse: 0 m/s</div>
   <div class="tape" id="altitude">Altitude: 0 m</div>
@@ -156,50 +130,46 @@
   let speedText = document.getElementById("speed");
   let recenterOffset = 0;
 
-  const pitchLinesContainer = document.getElementById("pitchLines");
-
-  function updatePitchLines(pitch) {
-    pitchLinesContainer.innerHTML = "";
-    for (let i = -90; i <= 90; i += 10) {
-      if (i === 0) continue;
-      const yOffset = (pitch - i) * 2;
-      const line = document.createElement("div");
-      line.className = "pitch-line";
-      line.style.top = `calc(50% + ${yOffset}px)`;
-      pitchLinesContainer.appendChild(line);
-
-      const label = document.createElement("div");
-      label.className = "pitch-label";
-      label.style.top = `calc(50% + ${yOffset - 6}px)`;
-      label.textContent = Math.abs(i);
-      pitchLinesContainer.appendChild(label);
-    }
-  }
-
+  // Recentrer
   document.getElementById("recenterBtn").addEventListener("click", () => {
     recenterOffset = pitch;
   });
 
+  // Lignes de pitch
+  const pitchLines = document.getElementById("pitchLines");
+  for (let i = -90; i <= 90; i += 10) {
+    const line = document.createElement("div");
+    line.className = "pitch-line";
+    line.style.top = `calc(50% - ${i * 4}px)`;
+    pitchLines.appendChild(line);
+  }
+
+  // Gyroscope
   window.addEventListener("deviceorientation", (event) => {
     let orientation = (screen.orientation || {}).angle || window.orientation || 0;
 
     if (orientation === 90 || orientation === -90) {
-      pitch = -(event.gamma || 0);
+      // Paysage
+      pitch = event.gamma || 0;
       roll = -event.beta || 0;
     } else {
-      pitch = -(event.beta || 0);
+      // Portrait
+      pitch = event.beta || 0;
       roll = event.gamma || 0;
     }
 
     heading = event.alpha || 0;
-    const adjustedPitch = pitch - recenterOffset;
+
+    const adjustedPitch = Math.max(-45, Math.min(45, pitch - recenterOffset));
+
+    // Mise à jour horizon
     horizon.style.transform = `
       rotate(${roll}deg)
-      translateY(${adjustedPitch * 2}px)
+      translateY(${-adjustedPitch * 4}px)
     `;
-    updatePitchLines(adjustedPitch);
   });
 
+  // Simulateur altitude / vitesse (remplace par de vrais capteurs si tu veux)
   let simulatedAltitude = 0;
   let simulatedSpeed = 0;
 
