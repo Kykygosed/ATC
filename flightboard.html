@@ -5,47 +5,67 @@
   <title>Flight Board</title>
   <style>
     body {
-      background: #003366;
+      background: #001d33;
       font-family: monospace;
       color: white;
       text-align: center;
     }
+
     table {
+      width: 90%;
       margin: auto;
-      width: 80%;
       border-collapse: collapse;
     }
+
     th, td {
       padding: 10px;
       border-bottom: 1px solid #ccc;
     }
-    th {
-      background-color: #002244;
+
+    tr:nth-child(even) {
+      background-color: #003b5c;
     }
-    .cancelled {
-      color: red;
+
+    tr:nth-child(odd) {
+      background-color: #004d73;
+    }
+
+    .green { color: #00ff00; }
+    .red { color: red; }
+    .orange { color: orange; }
+    .yellow { color: yellow; }
+
+    .blink {
+      animation: blink-animation 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink-animation {
+      to {
+        visibility: hidden;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>DEPARTURES</h1>
+  <h1>Tableau des Départs</h1>
   <table>
     <thead>
       <tr>
-        <th>TIME</th>
+        <th>HEURE</th>
         <th>DESTINATION</th>
-        <th>FLIGHT</th>
+        <th>VOL</th>
         <th>GATE</th>
-        <th>REMARKS</th>
+        <th>STATUT</th>
       </tr>
     </thead>
-    <tbody id="flightTable">
-    </tbody>
+    <tbody id="flightsBoard"></tbody>
   </table>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+    import {
+      getDatabase, ref, onValue
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
@@ -60,21 +80,41 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const flightTable = document.getElementById("flightTable");
+    const flightsBoard = document.getElementById("flightsBoard");
+
+    const getStatusClass = (status) => {
+      switch (status) {
+        case "A l’heure": return "green";
+        case "RETARD": return "yellow";
+        case "ANNULÉ": return "red";
+        case "EMBARQUEMENT":
+        case "FIN D’EMBARQUEMENT": return "orange";
+        case "ARRIVÉ": return "green";
+        default: return "";
+      }
+    }
+
+    const getBlink = (status) => {
+      return status === "FIN D’EMBARQUEMENT" ? "blink" : "";
+    }
 
     onValue(ref(db, 'flights'), (snapshot) => {
-      flightTable.innerHTML = '';
+      flightsBoard.innerHTML = "";
       snapshot.forEach(child => {
         const data = child.val();
-        const row = document.createElement("tr");
-        row.innerHTML = `
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
           <td>${data.time}</td>
           <td>${data.destination}</td>
           <td>${data.flight}</td>
           <td>${data.gate}</td>
-          <td class="${data.remarks === 'CANCELLED' ? 'cancelled' : ''}">${data.remarks}</td>
+          <td class="${getStatusClass(data.remarks)} ${getBlink(data.remarks)}">
+            ${data.remarks}
+          </td>
         `;
-        flightTable.appendChild(row);
+
+        flightsBoard.appendChild(tr);
       });
     });
   </script>
