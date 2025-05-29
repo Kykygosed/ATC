@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radar Details</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #0e0e0e;
+      color: white;
+      padding: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      border-radius: 5px;
+      border: none;
+      background-color: #1e1e1e;
+      color: white;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px;
+      width: 100%;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h2>Modifier les DÃ©tails d'un Vol</h2>
+  <label for="callsign">Callsign</label>
+  <input type="text" id="callsign">
+
+  <label for="depart">AÃ©roport de dÃ©part</label>
+  <input type="text" id="depart">
+
+  <label for="destination">AÃ©roport de destination</label>
+  <input type="text" id="destination">
+
+  <label for="compagnie">Compagnie aÃ©rienne</label>
+  <input type="text" id="compagnie">
+
+  <label for="appareil">Type d'appareil</label>
+  <input type="text" id="appareil">
+
+  <label for="statut">Statut du vol</label>
+  <select id="statut">
+    <option value="ArrivÃ© | A la porte">ArrivÃ© | A la porte</option>
+    <option value="StoppÃ©">StoppÃ©</option>
+    <option value="DÃ©part | A la porte">DÃ©part | A la porte</option>
+    <option value="DÃ©part | Embarquement">DÃ©part | Embarquement</option>
+    <option value="DÃ©part | Taxi">DÃ©part | Taxi</option>
+    <option value="En vol | DÃ©collage">En vol | DÃ©collage</option>
+    <option value="En vol | CroisiÃ¨re">En vol | CroisiÃ¨re</option>
+    <option value="En vol | Approche">En vol | Approche</option>
+    <option value="ArrivÃ© | Atterrissage">ArrivÃ© | Atterrissage</option>
+    <option value="ArrivÃ© | Taxi">ArrivÃ© | Taxi</option>
+  </select>
+
+  <label for="vitesse">Vitesse (kt)</label>
+  <input type="number" id="vitesse">
+
+  <label for="altitude">Altitude (ft)</label>
+  <input type="number" id="altitude">
+
+  <label for="dureeActuelle">DurÃ©e actuelle du vol</label>
+  <input type="text" id="dureeActuelle">
+
+  <label for="dureeRestante">DurÃ©e restante estimÃ©e</label>
+  <input type="text" id="dureeRestante">
+
+  <label for="progress">Progression du vol (%)</label>
+  <input type="number" id="progress">
+
+  <button onclick="saveDetails()">Enregistrer</button>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function saveDetails() {
+      const callsign = document.getElementById("callsign").value;
+      const data = {
+        callsign,
+        depart: document.getElementById("depart").value,
+        destination: document.getElementById("destination").value,
+        compagnie: document.getElementById("compagnie").value,
+        appareil: document.getElementById("appareil").value,
+        statut: document.getElementById("statut").value,
+        vitesse: document.getElementById("vitesse").value,
+        altitude: document.getElementById("altitude").value,
+        dureeActuelle: document.getElementById("dureeActuelle").value,
+        dureeRestante: document.getElementById("dureeRestante").value,
+        progress: document.getElementById("progress").value
+      };
+      db.ref("flights/" + callsign + "/details").set(data).then(() => {
+        alert("DÃ©tails enregistrÃ©s avec succÃ¨s");
+      });
+    }
+  </script>
+</body>
+</html>
