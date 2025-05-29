@@ -70,25 +70,14 @@
 <body>
   <div id="map"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const firebaseConfig = {
-      apiKey: "",
-      authDomain: "",
-      databaseURL: "",
-      projectId: "",
-      storageBucket: "",
-      messagingSenderId: "",
-      appId: ""
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
 
+  <!-- Carte OpenStreetMap -->
+  <script>
     const map = L.map('map').setView([48.85, 2.35], 6); // Centré sur Paris
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: 'Map data © OpenStreetMap contributors'
+      attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
     const avionIcon = L.icon({
@@ -96,29 +85,35 @@
       iconSize: [32, 32],
     });
 
-    const marker = L.marker([0, 0], { icon: avionIcon }).addTo(map);
+    const marker = L.marker([48.85, 2.35], { icon: avionIcon }).addTo(map);
 
-    db.ref("flights/CALLSIGN/position").on("value", snapshot => {
-      const data = snapshot.val();
-      if (data) {
-        marker.setLatLng([data.lat, data.lng]);
-      }
-    });
-
+    // Simulation d’un clic popup (à personnaliser avec Firebase)
     marker.on("click", () => {
-      db.ref("flights/CALLSIGN/details").once("value").then(snapshot => {
-        const data = snapshot.val();
-        const statutColor = {
-          "Arrivé": "yellow",
-          "Stoppé": "red",
-          "Départ": "#007bff",
-          "En vol": "#28a745"
-        };
+      const data = {
+        callsign: "AFR123",
+        depart: "LFPG",
+        destination: "LFMN",
+        appareil: "A320",
+        vitesse: 420,
+        altitude: 32000,
+        compagnie: "Air France",
+        statut: "En vol",
+        dureeRestante: "1h15",
+        dureeActuelle: "45 min",
+        progress: 60
+      };
 
-        const statut = data.statut || "";
-        const color = Object.entries(statutColor).find(([key]) => statut.includes(key))?.[1] || "white";
+      const statutColor = {
+        "Arrivé": "yellow",
+        "Stoppé": "red",
+        "Départ": "#007bff",
+        "En vol": "#28a745"
+      };
 
-        const popupContent = `
+      const statut = data.statut || "";
+      const color = Object.entries(statutColor).find(([key]) => statut.includes(key))?.[1] || "white";
+
+      const popupContent = `
         <div class="custom-popup">
           <h3>${data.callsign}</h3>
           <div class="plan-vol">
@@ -141,9 +136,7 @@
             </div>
           </div>
         </div>`;
-
-        marker.bindPopup(popupContent).openPopup();
-      });
+      marker.bindPopup(popupContent).openPopup();
     });
   </script>
 </body>
