@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Carte en Temps Réel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body, html {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    #map {
+      height: 100vh;
+      width: 100vw;
+    }
+    .custom-popup {
+      background-color: black;
+      color: white;
+      border-radius: 12px;
+      padding: 12px;
+      width: 280px;
+      font-family: sans-serif;
+    }
+    .plan-vol {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .plan-vol div {
+      background-color: #333;
+      padding: 4px 8px;
+      border-radius: 6px;
+      flex: 1;
+      text-align: center;
+    }
+    .plan-vol img {
+      height: 20px;
+      margin: 0 5px;
+    }
+    .barre-progression {
+      margin-top: 8px;
+      background: #444;
+      height: 8px;
+      border-radius: 5px;
+      overflow: hidden;
+      position: relative;
+    }
+    .barre-progression span {
+      display: block;
+      height: 100%;
+      background-color: #007bff;
+      width: 40%;
+    }
+    .statut-vol {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .texte-statut {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "",
+      authDomain: "",
+      databaseURL: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const map = L.map('map').setView([48.85, 2.35], 6); // Centré sur Paris
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: 'Map data © OpenStreetMap contributors'
+    }).addTo(map);
+
+    const avionIcon = L.icon({
+      iconUrl: 'https://img.icons8.com/ios-filled/50/ffffff/airport.png',
+      iconSize: [32, 32],
+    });
+
+    const marker = L.marker([0, 0], { icon: avionIcon }).addTo(map);
+
+    db.ref("flights/CALLSIGN/position").on("value", snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        marker.setLatLng([data.lat, data.lng]);
+      }
+    });
+
+    marker.on("click", () => {
+      db.ref("flights/CALLSIGN/details").once("value").then(snapshot => {
+        const data = snapshot.val();
+        const statutColor = {
+          "Arrivé": "yellow",
+          "Stoppé": "red",
+          "Départ": "#007bff",
+          "En vol": "#28a745"
+        };
+
+        const statut = data.statut || "";
+        const color = Object.entries(statutColor).find(([key]) => statut.includes(key))?.[1] || "white";
+
+        const popupContent = `
+        <div class="custom-popup">
+          <h3>${data.callsign}</h3>
+          <div class="plan-vol">
+            <div>${data.depart}</div>
+            <img src="https://img.icons8.com/ios/50/ffffff/airplane-take-off.png"/>
+            <div>${data.destination}</div>
+          </div>
+          <div class="infos-vol">
+            <p>Appareil : ${data.appareil}</p>
+            <p>Vitesse : ${data.vitesse} kt</p>
+            <p>Altitude : ${data.altitude} ft</p>
+          </div>
+          <div class="details-vol">
+            <p>Compagnie : ${data.compagnie}</p>
+            <div class="texte-statut" style="color:${color}">${data.depart} - ${statut} - ${data.destination}</div>
+            <div class="barre-progression"><span style="width:${data.progress || 0}%;"></span></div>
+            <div class="statut-vol">
+              <span>${data.dureeRestante}</span>
+              <span>${data.dureeActuelle}</span>
+            </div>
+          </div>
+        </div>`;
+
+        marker.bindPopup(popupContent).openPopup();
+      });
+    });
+  </script>
+</body>
+</html>
