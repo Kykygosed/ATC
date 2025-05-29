@@ -1,0 +1,82 @@
+<!-- flightboard.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Flight Board</title>
+  <style>
+    body {
+      background: #003366;
+      font-family: monospace;
+      color: white;
+      text-align: center;
+    }
+    table {
+      margin: auto;
+      width: 80%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    th {
+      background-color: #002244;
+    }
+    .cancelled {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>DEPARTURES</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>TIME</th>
+        <th>DESTINATION</th>
+        <th>FLIGHT</th>
+        <th>GATE</th>
+        <th>REMARKS</th>
+      </tr>
+    </thead>
+    <tbody id="flightTable">
+    </tbody>
+  </table>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const flightTable = document.getElementById("flightTable");
+
+    onValue(ref(db, 'flights'), (snapshot) => {
+      flightTable.innerHTML = '';
+      snapshot.forEach(child => {
+        const data = child.val();
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${data.time}</td>
+          <td>${data.destination}</td>
+          <td>${data.flight}</td>
+          <td>${data.gate}</td>
+          <td class="${data.remarks === 'CANCELLED' ? 'cancelled' : ''}">${data.remarks}</td>
+        `;
+        flightTable.appendChild(row);
+      });
+    });
+  </script>
+</body>
+</html>
