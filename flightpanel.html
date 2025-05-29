@@ -1,0 +1,54 @@
+<!-- flightpanel.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Flight Panel</title>
+</head>
+<body>
+  <h1>Ajouter un vol</h1>
+  <form id="flightForm">
+    <input type="text" placeholder="Heure (ex: 20:08)" id="time"><br>
+    <input type="text" placeholder="Destination" id="destination"><br>
+    <input type="text" placeholder="Numéro de vol" id="flight"><br>
+    <input type="text" placeholder="Porte" id="gate"><br>
+    <button type="submit">Ajouter</button>
+  </form>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBPq6Wfxzq02MfK69BFxHm9_FUjDGTmAcw",
+      authDomain: "kykychat-24c7f.firebaseapp.com",
+      databaseURL: "https://kykychat-24c7f-default-rtdb.firebaseio.com",
+      projectId: "kykychat-24c7f",
+      storageBucket: "kykychat-24c7f.appspot.com",
+      messagingSenderId: "342562811927",
+      appId: "1:342562811927:web:0fed1e1f511c4fddcfec52"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const form = document.getElementById("flightForm");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const time = document.getElementById("time").value;
+      const destination = document.getElementById("destination").value.toUpperCase();
+      const flight = document.getElementById("flight").value.toUpperCase();
+      const gate = document.getElementById("gate").value;
+
+      push(ref(db, 'flights'), {
+        time,
+        destination,
+        flight,
+        gate,
+        remarks: "ON TIME" // valeur par défaut
+      });
+
+      form.reset();
+    });
+  </script>
+</body>
+</html>
