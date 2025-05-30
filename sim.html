@@ -41,7 +41,7 @@
 
     // Chargement du modèle GLTF
     const loader = new THREE.GLTFLoader();
-    loader.load('plane.gltf', function (gltf) {
+    loader.load('scene.gltf', function (gltf) {
       const model = gltf.scene;
       model.scale.set(1, 1, 1); // Ajuste si besoin
       scene.add(model);
