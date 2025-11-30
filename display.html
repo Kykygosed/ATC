@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Affichage - Seatbelts & No Smoking</title>
+  <style>
+    html,body{height:100%;margin:0;}
+    body{
+      background:#000;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color:#fff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .frame{
+      position:relative;
+      width:100%;
+      height:100%;
+    }
+    .img{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      max-height:60%;
+      opacity:0;
+      transition: opacity 350ms ease, transform 350ms ease;
+      filter: drop-shadow(0 20px 30px rgba(0,0,0,0.8));
+    }
+    .img.left{ left:6%; transform: translateY(-50%) translateX(-10px); }
+    .img.right{ right:6%; transform: translateY(-50%) translateX(10px); }
+    .img.show{
+      opacity:1;
+      transform:translateY(-50%) translateX(0);
+    }
+
+    /* small control overlay to enable sound and debug */
+    .overlay{
+      position:fixed;
+      left:12px;
+      bottom:12px;
+      background: rgba(255,255,255,0.04);
+      padding:10px 12px;
+      border-radius:8px;
+      backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,0.02);
+      color:#dfeaf8;
+      font-size:14px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    button.btn{
+      background:transparent;
+      color:inherit;
+      border:1px solid rgba(255,255,255,0.08);
+      padding:8px 10px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .hint{font-size:13px;color:#9fb0c6}
+  </style>
+</head>
+<body>
+  <div class="frame" aria-live="polite">
+    <img id="seatImg" class="img left" src="seatbelt.png" alt="Seatbelt sign">
+    <img id="smokeImg" class="img right" src="nosmoking.png" alt="No smoking sign">
+  </div>
+
+  <div class="overlay" role="region" aria-label="Contrôles">
+    <button id="enableSound" class="btn">Activer son</button>
+    <div class="hint">Chime activé : <span id="soundState">non</span></div>
+  </div>
+
+  <!-- Firebase SDK v9 modular -->
+  <script type="module">
+    // --- Remplace ces valeurs par ton firebaseConfig ---
+    const firebaseConfig = {
+      apiKey: "REPLACE_API_KEY",
+      authDomain: "REPLACE_AUTH_DOMAIN",
+      databaseURL: "REPLACE_DATABASE_URL",
+      projectId: "REPLACE_PROJECT_ID",
+      storageBucket: "REPLACE_STORAGE_BUCKET",
+      messagingSenderId: "REPLACE_SENDER_ID",
+      appId: "REPLACE_APP_ID"
+    };
+    // --- FIN config ---
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const seatImg = document.getElementById('seatImg');
+    const smokeImg = document.getElementById('smokeImg');
+
+    const soundBtn = document.getElementById('enableSound');
+    const soundState = document.getElementById('soundState');
+
+    // audio
+    const chime = new Audio('chime.mp3');
+    chime.preload = 'auto';
+    let soundEnabled = false;
+
+    soundBtn.addEventListener('click', async ()=>{
+      try{
+        await chime.play(); // trigger user gesture to allow future autoplay
+        chime.pause();
+        chime.currentTime = 0;
+        soundEnabled = true;
+        soundState.textContent = 'oui';
+        soundBtn.disabled = true;
+      } catch(e){
+        console.warn('Impossible d\'autoriser le son :', e);
+        alert('Autorisation audio échouée : interagis avec la page (cliquer sur Activer son) puis réessaie.');
+      }
+    });
+
+    // Helpers to show/hide images with class
+    function show(el, on){
+      el.classList.toggle('show', !!on);
+    }
+
+    // We want to *play chime only when the value changes* (not on initial attach).
+    // We'll keep previous values and a flag initialLoaded per key.
+    const seatRef = ref(db, 'seatbelts');
+    const smokeRef = ref(db, 'nosmoking');
+
+    let prevSeat = null;
+    let prevSmoke = null;
+    let seatInitial = false;
+    let smokeInitial = false;
+
+    function maybePlayChime(){
+      if(soundEnabled){
+        try { chime.currentTime = 0; chime.play().catch(()=>{/* ignore */}); }
+        catch(e){ console.warn('play error', e); }
+      }
+    }
+
+    onValue(seatRef, (snap)=>{
+      const v = snap.val();
+      // On first load, just set prev and show/hide without chime.
+      if(!seatInitial){
+        prevSeat = !!v;
+        show(seatImg, !!v);
+        seatInitial = true;
+        return;
+      }
+      // subsequent changes - if different, show/hide and play chime
+      const now = !!v;
+      if(now !== prevSeat){
+        show(seatImg, now);
+        maybePlayChime();
+        prevSeat = now;
+      }
+    }, (err)=> console.error('seat onValue error', err));
+
+    onValue(smokeRef, (snap)=>{
+      const v = snap.val();
+      if(!smokeInitial){
+        prevSmoke = !!v;
+        show(smokeImg, !!v);
+        smokeInitial = true;
+        return;
+      }
+      const now = !!v;
+      if(now !== prevSmoke){
+        show(smokeImg, now);
+        maybePlayChime();
+        prevSmoke = now;
+      }
+    }, (err)=> console.error('smoke onValue error', err));
+
+    // Optionnel : s'assurer que la page affiche les images si elles sont déjà true
+    // (les onValue ci-dessus le font déjà).
+  </script>
+</body>
+</html>
