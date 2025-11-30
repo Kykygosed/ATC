@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Panneau de contrôle - Seatbelt & No Smoking</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent: #ffcc00;
+      --muted: #9aa4b2;
+    }
+    body{
+      margin:0;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg,#021025 0%, #071426 100%);
+      color:#e6eef8;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px;
+    }
+    .panel{
+      width:760px;
+      max-width:95%;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:14px;
+      padding:28px;
+      box-shadow: 0 10px 30px rgba(2,6,23,0.7);
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+    h1{margin:0 0 16px 0;font-size:20px;}
+    p.lead{color:var(--muted);margin:0 0 20px 0;}
+    .row{
+      display:flex;
+      gap:18px;
+      align-items:center;
+      margin-bottom:18px;
+    }
+    .card{
+      flex:1;
+      background:rgba(255,255,255,0.02);
+      padding:18px;
+      border-radius:10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border:1px solid rgba(255,255,255,0.01);
+    }
+    .name{
+      display:flex;
+      flex-direction:column;
+    }
+    .name .title{font-weight:600;}
+    .name .desc{font-size:13px;color:var(--muted);margin-top:6px;}
+    /* Switch */
+    .switch{
+      --w:68px;
+      --h:36px;
+      width:var(--w);
+      height:var(--h);
+      background:rgba(255,255,255,0.06);
+      border-radius:999px;
+      display:inline-grid;
+      align-items:center;
+      padding:4px;
+      position:relative;
+      transition:background .18s ease;
+      cursor:pointer;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .switch.on{ background: linear-gradient(90deg,#1b7a5a,#1ab07b); }
+    .switch .knob{
+      width:28px;height:28px;border-radius:50%;
+      background:white;
+      transform:translateX(0);
+      transition: transform .18s cubic-bezier(.2,.9,.2,1);
+      box-shadow: 0 6px 14px rgba(2,6,23,0.6);
+    }
+    .switch.on .knob{ transform:translateX(32px); }
+    .help{font-size:13px;color:var(--muted);margin-top:8px;}
+    .footer{display:flex;justify-content:space-between;align-items:center;margin-top:20px;}
+    .link{color:var(--accent);text-decoration:none;font-weight:600}
+    .status{font-size:13px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="panel" role="region" aria-label="Panneau de contrôle Seatbelts">
+    <h1>Contrôle : Seatbelt et No Smoking</h1>
+    <p class="lead">Active / désactive les voyants. Les changements sont envoyés en temps réel à Firebase.</p>
+
+    <div class="row">
+      <div class="card">
+        <div class="name">
+          <div class="title">Seatbelts</div>
+          <div class="desc">Voyant "Attachez vos ceintures"</div>
+        </div>
+        <div id="switch-seatbelt" class="switch" role="switch" aria-checked="false" tabindex="0">
+          <div class="knob"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="name">
+          <div class="title">No Smoking</div>
+          <div class="desc">Interdiction de fumer</div>
+        </div>
+        <div id="switch-nosmoke" class="switch" role="switch" aria-checked="false" tabindex="0">
+          <div class="knob"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="help">Les switches reflètent l'état réel (synchronisé en temps réel). Le son chime est joué côté affichage à chaque changement.</div>
+
+    <div class="footer">
+      <div class="status" id="connectionStatus">Connexion Firebase : <strong>non initialisée</strong></div>
+      <div>
+        <a class="link" href="display.html" target="_blank" rel="noopener">Ouvrir la page d'affichage</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK v9 modular -->
+  <script type="module">
+    // --- Remplace ces valeurs par ton firebaseConfig (trouvé dans console Firebase) ---
+    const firebaseConfig = {
+      apiKey: "REPLACE_API_KEY",
+      authDomain: "REPLACE_AUTH_DOMAIN",
+      databaseURL: "REPLACE_DATABASE_URL", // IMPORTANT pour Realtime DB
+      projectId: "REPLACE_PROJECT_ID",
+      storageBucket: "REPLACE_STORAGE_BUCKET",
+      messagingSenderId: "REPLACE_SENDER_ID",
+      appId: "REPLACE_APP_ID"
+    };
+    // --- FIN config ---
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const switchSeat = document.getElementById('switch-seatbelt');
+    const switchSmoke = document.getElementById('switch-nosmoke');
+    const connStatus = document.getElementById('connectionStatus');
+
+    // handlers to update UI switch visuals
+    function setSwitchVisual(el, on){
+      el.classList.toggle('on', !!on);
+      el.setAttribute('aria-checked', !!on);
+    }
+
+    // Toggle helpers
+    function setValue(path, bool){
+      set(ref(db, path), !!bool).catch(err=>{
+        console.error('Erreur écriture RTDB', err);
+        alert('Erreur en écriture Firebase: ' + err.message);
+      });
+    }
+
+    // Click / keyboard control for accessibility
+    function attachToggle(el, path){
+      el.addEventListener('click', async ()=>{
+        // read current aria-checked then flip
+        const current = el.getAttribute('aria-checked') === 'true';
+        const next = !current;
+        setValue(path, next);
+      });
+      el.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter' || e.key === ' '){
+          e.preventDefault();
+          el.click();
+        }
+      });
+    }
+
+    attachToggle(switchSeat, 'seatbelts');
+    attachToggle(switchSmoke, 'nosmoking');
+
+    // Listen to DB and update switches
+    const seatRef = ref(db, 'seatbelts');
+    const smokeRef = ref(db, 'nosmoking');
+
+    onValue(seatRef, (snap)=>{
+      const v = snap.val();
+      setSwitchVisual(switchSeat, !!v);
+    }, (err)=> {
+      console.error('onValue seat error', err);
+    });
+
+    onValue(smokeRef, (snap)=>{
+      const v = snap.val();
+      setSwitchVisual(switchSmoke, !!v);
+    }, (err)=> {
+      console.error('onValue smoke error', err);
+    });
+
+    connStatus.innerHTML = 'Connexion Firebase : <strong>initialisée</strong>';
+  </script>
+</body>
+</html>
