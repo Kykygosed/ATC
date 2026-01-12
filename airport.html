@@ -52,12 +52,12 @@ canvas {
 <body>
 
 <div id="toolbar">
-  <button id="addAirport">Ajouter aéroport</button>
-  <button id="addFinal">Ajouter finale</button>
-  <button id="addRunway">Ajouter piste</button>
-  <button id="lock">Lock / Unlock</button>
-  <button id="delete">Delete</button>
-  <button id="save">Save</button>
+  <button id="btnAddAirport">Ajouter aéroport</button>
+  <button id="btnAddFinal">Ajouter finale</button>
+  <button id="btnAddRunway">Ajouter piste</button>
+  <button id="btnLock">Lock / Unlock</button>
+  <button id="btnDelete">Delete</button>
+  <button id="btnSave">Save</button>
 </div>
 
 <div id="zoomContainer">
@@ -97,7 +97,9 @@ window.addEventListener("resize", resize);
 // ================= ZOOM =================
 let zoom = 1;
 const zoomSlider = document.getElementById("zoomSlider");
-zoomSlider.oninput = () => zoom = parseFloat(zoomSlider.value);
+zoomSlider.addEventListener("input", () => {
+  zoom = parseFloat(zoomSlider.value);
+});
 
 // ================= DATA =================
 let objects = [];
@@ -124,6 +126,7 @@ class Airport {
 
     if (this === selectedObject) {
       ctx.strokeStyle = "yellow";
+      ctx.lineWidth = 2;
       ctx.strokeRect(
         this.x - 25 * this.scale,
         this.y - 25 * this.scale,
@@ -201,24 +204,38 @@ canvas.addEventListener("click", e => {
       selectedObject = o;
       return;
     }
+
     if (o.type === "line") {
-      if (dist(x,y,o.p1.x,o.p1.y) < 10) { selectedEndpoint = o.p1; return; }
-      if (dist(x,y,o.p2.x,o.p2.y) < 10) { selectedEndpoint = o.p2; return; }
+      if (dist(x,y,o.p1.x,o.p1.y) < 10) {
+        selectedEndpoint = o.p1;
+        return;
+      }
+      if (dist(x,y,o.p2.x,o.p2.y) < 10) {
+        selectedEndpoint = o.p2;
+        return;
+      }
     }
   }
 });
 
-// ================= BUTTONS =================
-addAirport.onclick = () => {
+// ================= BUTTONS (FIX CRITIQUE) =================
+const btnAddAirport = document.getElementById("btnAddAirport");
+const btnAddFinal   = document.getElementById("btnAddFinal");
+const btnAddRunway  = document.getElementById("btnAddRunway");
+const btnLock       = document.getElementById("btnLock");
+const btnDelete     = document.getElementById("btnDelete");
+const btnSave       = document.getElementById("btnSave");
+
+btnAddAirport.addEventListener("click", () => {
   objects.push(new Airport({
-    x: canvas.width/(2*zoom),
-    y: canvas.height/(2*zoom),
+    x: canvas.width / (2 * zoom),
+    y: canvas.height / (2 * zoom),
     scale: 1,
     locked: false
   }));
-};
+});
 
-addFinal.onclick = () => {
+btnAddFinal.addEventListener("click", () => {
   const name = prompt("Nom piste finale ?");
   if (!name) return;
   objects.push(new Line({
@@ -227,33 +244,33 @@ addFinal.onclick = () => {
     p1: { x: 300, y: 300 },
     p2: { x: 500, y: 500, label: name }
   }));
-};
+});
 
-addRunway.onclick = () => {
+btnAddRunway.addEventListener("click", () => {
   objects.push(new Line({
     color: "green",
     dashed: false,
     p1: { x: 300, y: 300 },
     p2: { x: 500, y: 500 }
   }));
-};
+});
 
-lock.onclick = () => {
+btnLock.addEventListener("click", () => {
   if (selectedObject?.type === "airport")
     selectedObject.locked = !selectedObject.locked;
-};
+});
 
-delete.onclick = () => {
+btnDelete.addEventListener("click", () => {
   if (selectedObject) {
     objects = objects.filter(o => o !== selectedObject);
     selectedObject = null;
   }
-};
+});
 
-save.onclick = () => {
+btnSave.addEventListener("click", () => {
   db.ref("maps/default").set(JSON.parse(JSON.stringify(objects)));
   alert("Carte sauvegardée !");
-};
+});
 
 // ================= LOAD FROM FIREBASE =================
 db.ref("maps/default").once("value", snap => {
