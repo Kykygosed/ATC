@@ -29,6 +29,21 @@ button {
   cursor: pointer;
 }
 
+#zoomContainer {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+#zoomSlider {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+  width: 8px;
+  height: 200px;
+}
+
 canvas {
   display: block;
 }
@@ -40,11 +55,13 @@ canvas {
   <button id="addAirport">Ajouter aéroport</button>
   <button id="addFinal">Ajouter finale</button>
   <button id="addRunway">Ajouter piste</button>
-  <button id="zoomIn">+</button>
-  <button id="zoomOut">-</button>
   <button id="lock">Lock / Unlock</button>
   <button id="delete">Delete</button>
   <button id="save">Save</button>
+</div>
+
+<div id="zoomContainer">
+  <input id="zoomSlider" type="range" min="0.5" max="2.5" step="0.05" value="1">
 </div>
 
 <canvas id="canvas"></canvas>
@@ -66,8 +83,21 @@ const db = firebase.database();
 // ================= CANVAS =================
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = "high";
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ================= ZOOM =================
+let zoom = 1;
+const zoomSlider = document.getElementById("zoomSlider");
+zoomSlider.oninput = () => zoom = parseFloat(zoomSlider.value);
 
 // ================= DATA =================
 let objects = [];
@@ -76,12 +106,9 @@ let selectedEndpoint = null;
 
 // ================= CLASSES =================
 class Airport {
-  constructor(x, y) {
+  constructor(data) {
+    Object.assign(this, data);
     this.type = "airport";
-    this.x = x;
-    this.y = y;
-    this.scale = 1;
-    this.locked = false;
     this.img = new Image();
     this.img.src = "./airport.png";
   }
@@ -117,22 +144,14 @@ class Airport {
 }
 
 class Line {
-  constructor(color, dashed, askName = false) {
+  constructor(data) {
+    Object.assign(this, data);
     this.type = "line";
-    this.color = color;
-    this.dashed = dashed;
-    this.p1 = { x: 300, y: 300, label: null };
-    this.p2 = { x: 500, y: 500, label: null };
-
-    if (askName) {
-      const name = prompt("Nom de la piste (finale) ?");
-      if (name) this.p2.label = name;
-    }
   }
 
   draw() {
     ctx.strokeStyle = this.color;
-    ctx.setLineDash(this.dashed ? [8, 6] : []);
+    ctx.setLineDash(this.dashed ? [8,6] : []);
     ctx.lineWidth = 2;
 
     ctx.beginPath();
@@ -141,7 +160,6 @@ class Line {
     ctx.stroke();
 
     ctx.setLineDash([]);
-
     drawEndpoint(this.p1);
     drawEndpoint(this.p2);
   }
@@ -152,13 +170,13 @@ function drawEndpoint(p) {
   ctx.beginPath();
   ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
   ctx.fill();
-
   if (p.label) ctx.fillText(p.label, p.x + 8, p.y - 8);
 }
 
 // ================= RENDER =================
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+  ctx.clearRect(0, 0, canvas.width / zoom, canvas.height / zoom);
   objects.forEach(o => o.draw());
   requestAnimationFrame(render);
 }
@@ -166,10 +184,9 @@ render();
 
 // ================= MOUSE =================
 canvas.addEventListener("click", e => {
-  const x = e.clientX;
-  const y = e.clientY;
+  const x = e.clientX / zoom;
+  const y = e.clientY / zoom;
 
-  // Placement d'une extrémité sélectionnée
   if (selectedEndpoint) {
     selectedEndpoint.x = x;
     selectedEndpoint.y = y;
@@ -184,82 +201,74 @@ canvas.addEventListener("click", e => {
       selectedObject = o;
       return;
     }
-
     if (o.type === "line") {
-      if (distance(x, y, o.p1.x, o.p1.y) < 10) {
-        selectedEndpoint = o.p1;
-        return;
-      }
-      if (distance(x, y, o.p2.x, o.p2.y) < 10) {
-        selectedEndpoint = o.p2;
-        return;
-      }
-    }
-  }
-});
-
-canvas.addEventListener("dblclick", e => {
-  for (let o of objects) {
-    if (o.type === "line") {
-      if (distance(e.clientX, e.clientY, o.p1.x, o.p1.y) < 10 && !o.p1.label)
-        o.p1.label = prompt("Nom axe piste");
-      if (distance(e.clientX, e.clientY, o.p2.x, o.p2.y) < 10 && !o.p2.label)
-        o.p2.label = prompt("Nom axe piste");
+      if (dist(x,y,o.p1.x,o.p1.y) < 10) { selectedEndpoint = o.p1; return; }
+      if (dist(x,y,o.p2.x,o.p2.y) < 10) { selectedEndpoint = o.p2; return; }
     }
   }
 });
 
 // ================= BUTTONS =================
-const btnAddAirport = document.getElementById("addAirport");
-const btnAddFinal   = document.getElementById("addFinal");
-const btnAddRunway  = document.getElementById("addRunway");
-const btnZoomIn     = document.getElementById("zoomIn");
-const btnZoomOut    = document.getElementById("zoomOut");
-const btnLock       = document.getElementById("lock");
-const btnDelete     = document.getElementById("delete");
-const btnSave       = document.getElementById("save");
-
-btnAddAirport.onclick = () => {
-  objects.push(new Airport(canvas.width / 2, canvas.height / 2));
+addAirport.onclick = () => {
+  objects.push(new Airport({
+    x: canvas.width/(2*zoom),
+    y: canvas.height/(2*zoom),
+    scale: 1,
+    locked: false
+  }));
 };
 
-btnAddFinal.onclick = () => {
-  objects.push(new Line("orange", true, true));
+addFinal.onclick = () => {
+  const name = prompt("Nom piste finale ?");
+  if (!name) return;
+  objects.push(new Line({
+    color: "orange",
+    dashed: true,
+    p1: { x: 300, y: 300 },
+    p2: { x: 500, y: 500, label: name }
+  }));
 };
 
-btnAddRunway.onclick = () => {
-  objects.push(new Line("green", false));
+addRunway.onclick = () => {
+  objects.push(new Line({
+    color: "green",
+    dashed: false,
+    p1: { x: 300, y: 300 },
+    p2: { x: 500, y: 500 }
+  }));
 };
 
-btnZoomIn.onclick = () => {
-  if (selectedObject?.type === "airport") selectedObject.scale += 0.1;
-};
-
-btnZoomOut.onclick = () => {
-  if (selectedObject?.type === "airport" && selectedObject.scale > 0.3)
-    selectedObject.scale -= 0.1;
-};
-
-btnLock.onclick = () => {
+lock.onclick = () => {
   if (selectedObject?.type === "airport")
     selectedObject.locked = !selectedObject.locked;
 };
 
-btnDelete.onclick = () => {
+delete.onclick = () => {
   if (selectedObject) {
     objects = objects.filter(o => o !== selectedObject);
     selectedObject = null;
   }
 };
 
-btnSave.onclick = () => {
+save.onclick = () => {
   db.ref("maps/default").set(JSON.parse(JSON.stringify(objects)));
   alert("Carte sauvegardée !");
 };
 
+// ================= LOAD FROM FIREBASE =================
+db.ref("maps/default").once("value", snap => {
+  const data = snap.val();
+  if (!data) return;
+
+  objects = data.map(o => {
+    if (o.type === "airport") return new Airport(o);
+    if (o.type === "line") return new Line(o);
+  });
+});
+
 // ================= UTILS =================
-function distance(x1, y1, x2, y2) {
-  return Math.hypot(x2 - x1, y2 - y1);
+function dist(x1,y1,x2,y2) {
+  return Math.hypot(x2-x1, y2-y1);
 }
 </script>
 
