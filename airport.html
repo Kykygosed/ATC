@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>ATC Radar Map Editor</title>
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -67,18 +66,13 @@ const db = firebase.database();
 // ================= CANVAS =================
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener("resize", resize);
+canvas.width = innerWidth;
+canvas.height = innerHeight;
 
 // ================= DATA =================
 let objects = [];
-let selected = null;
-let dragPoint = null;
+let selectedObject = null;
+let selectedEndpoint = null;
 
 // ================= CLASSES =================
 class Airport {
@@ -101,9 +95,8 @@ class Airport {
       50 * this.scale
     );
 
-    if (this === selected) {
+    if (this === selectedObject) {
       ctx.strokeStyle = "yellow";
-      ctx.lineWidth = 2;
       ctx.strokeRect(
         this.x - 25 * this.scale,
         this.y - 25 * this.scale,
@@ -149,24 +142,21 @@ class Line {
 
     ctx.setLineDash([]);
 
-    drawPoint(this.p1);
-    drawPoint(this.p2);
+    drawEndpoint(this.p1);
+    drawEndpoint(this.p2);
   }
 }
 
-function drawPoint(p) {
-  ctx.fillStyle = "white";
+function drawEndpoint(p) {
+  ctx.fillStyle = (p === selectedEndpoint) ? "yellow" : "white";
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
   ctx.fill();
 
-  if (p.label) {
-    ctx.fillStyle = "white";
-    ctx.fillText(p.label, p.x + 8, p.y - 8);
-  }
+  if (p.label) ctx.fillText(p.label, p.x + 8, p.y - 8);
 }
 
-// ================= RENDER LOOP =================
+// ================= RENDER =================
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   objects.forEach(o => o.draw());
@@ -174,57 +164,47 @@ function render() {
 }
 render();
 
-// ================= MOUSE EVENTS =================
-canvas.addEventListener("mousedown", e => {
+// ================= MOUSE =================
+canvas.addEventListener("click", e => {
   const x = e.clientX;
   const y = e.clientY;
 
-  selected = null;
+  // Placement d'une extrémité sélectionnée
+  if (selectedEndpoint) {
+    selectedEndpoint.x = x;
+    selectedEndpoint.y = y;
+    selectedEndpoint = null;
+    return;
+  }
+
+  selectedObject = null;
 
   for (let o of objects) {
     if (o.type === "airport" && !o.locked && o.hit(x, y)) {
-      selected = o;
+      selectedObject = o;
       return;
     }
 
     if (o.type === "line") {
-      if (distance(x, y, o.p1.x, o.p1.y) < 10) dragPoint = o.p1;
-      if (distance(x, y, o.p2.x, o.p2.y) < 10) dragPoint = o.p2;
+      if (distance(x, y, o.p1.x, o.p1.y) < 10) {
+        selectedEndpoint = o.p1;
+        return;
+      }
+      if (distance(x, y, o.p2.x, o.p2.y) < 10) {
+        selectedEndpoint = o.p2;
+        return;
+      }
     }
   }
-});
-
-canvas.addEventListener("mousemove", e => {
-  if (selected) {
-    selected.x = e.clientX;
-    selected.y = e.clientY;
-  }
-  if (dragPoint) {
-    dragPoint.x = e.clientX;
-    dragPoint.y = e.clientY;
-  }
-});
-
-canvas.addEventListener("mouseup", () => {
-  dragPoint = null;
 });
 
 canvas.addEventListener("dblclick", e => {
   for (let o of objects) {
     if (o.type === "line") {
-      if (
-        distance(e.clientX, e.clientY, o.p1.x, o.p1.y) < 10 &&
-        !o.p1.label
-      ) {
+      if (distance(e.clientX, e.clientY, o.p1.x, o.p1.y) < 10 && !o.p1.label)
         o.p1.label = prompt("Nom axe piste");
-      }
-
-      if (
-        distance(e.clientX, e.clientY, o.p2.x, o.p2.y) < 10 &&
-        !o.p2.label
-      ) {
+      if (distance(e.clientX, e.clientY, o.p2.x, o.p2.y) < 10 && !o.p2.label)
         o.p2.label = prompt("Nom axe piste");
-      }
     }
   }
 });
@@ -252,21 +232,23 @@ btnAddRunway.onclick = () => {
 };
 
 btnZoomIn.onclick = () => {
-  if (selected && selected.scale) selected.scale += 0.1;
+  if (selectedObject?.type === "airport") selectedObject.scale += 0.1;
 };
 
 btnZoomOut.onclick = () => {
-  if (selected && selected.scale > 0.3) selected.scale -= 0.1;
+  if (selectedObject?.type === "airport" && selectedObject.scale > 0.3)
+    selectedObject.scale -= 0.1;
 };
 
 btnLock.onclick = () => {
-  if (selected) selected.locked = !selected.locked;
+  if (selectedObject?.type === "airport")
+    selectedObject.locked = !selectedObject.locked;
 };
 
 btnDelete.onclick = () => {
-  if (selected) {
-    objects = objects.filter(o => o !== selected);
-    selected = null;
+  if (selectedObject) {
+    objects = objects.filter(o => o !== selectedObject);
+    selectedObject = null;
   }
 };
 
