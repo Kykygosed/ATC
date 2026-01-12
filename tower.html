@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>ATC Simulator</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  background:#010147;
+  overflow:hidden;
+  font-family:Arial;
+  color:white;
+}
+
+#login{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#010147;
+  z-index:10;
+}
+
+#panel{
+  display:flex;
+  gap:10px;
+}
+
+#rightPanel{
+  position:absolute;
+  right:0;
+  top:0;
+  width:320px;
+  height:100%;
+  background:#02025f;
+  display:flex;
+  flex-direction:column;
+}
+
+#combox{
+  flex:1;
+  border-bottom:1px solid #333;
+  padding:5px;
+  font-size:12px;
+  overflow:auto;
+}
+
+#comInput{
+  width:100%;
+  box-sizing:border-box;
+}
+
+#strips{
+  flex:1;
+  overflow:auto;
+  font-size:12px;
+}
+
+.strip{
+  border-bottom:1px solid #444;
+  padding:4px;
+  cursor:pointer;
+}
+
+canvas{display:block;}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div id="panel">
+    <button id="connect">Connexion – TOUR</button>
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="rightPanel">
+  <div id="combox"></div>
+  <input id="comInput" placeholder="Commande ATC...">
+  <div id="strips"></div>
+</div>
+
+<audio id="startSound" src="./start.mp3"></audio>
+
+<script>
+// ================= FIREBASE =================
+firebase.initializeApp({
+  apiKey: "AIzaSyDxDzLbCnqYYVknoyHMzbE0gB_SRVLpgiw",
+  authDomain: "kyky-c3471.firebaseapp.com",
+  databaseURL: "https://kyky-c3471-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "kyky-c3471"
+});
+const db = firebase.database();
+
+// ================= CANVAS =================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth - 320;
+canvas.height = innerHeight;
+
+const CENTER = { x: canvas.width/2, y: canvas.height/2 };
+
+// ================= DATA =================
+let airport = null;
+let finale = null;
+let traffics = [];
+let selectedTraffic = null;
+
+// ================= LOGIN =================
+connect.onclick = async () => {
+  document.getElementById("login").style.display="none";
+  document.getElementById("startSound").play();
+  await loadAirport();
+  setInterval(spawnTraffic, rand(30000,60000));
+  setInterval(radarPing, 2000);
+};
+
+// ================= LOAD MAP =================
+async function loadAirport(){
+  const snap = await db.ref("maps/default").once("value");
+  const objs = snap.val();
+  airport = objs.find(o=>o.type==="airport");
+  finale = objs.find(o=>o.type==="line" && o.color==="orange");
+}
+
+// ================= TRAFFIC =================
+class Traffic{
+  constructor(){
+    this.callsign = "AFR"+Math.floor(Math.random()*9000);
+    this.altitude = 3000;
+    this.speed = 240;
+    this.heading = headingFromFinale();
+    this.state = "APPROACH";
+    this.x = spawnPoint().x;
+    this.y = spawnPoint().y;
+    this.dist = 1;
+    db.ref("traffic/"+this.callsign).set(this);
+  }
+
+  update(){
+    if(this.state==="APPROACH"){
+      this.altitude = Math.max(50,this.altitude-10);
+      this.speed = Math.max(120,this.speed-0.5);
+    }
+    if(this.state==="CLEARED"){
+      this.altitude = Math.max(0,this.altitude-20);
+    }
+    move(this);
+    if(this.altitude<=0){
+      this.state="DESPAWN";
+    }
+  }
+}
+
+// ================= SPAWN =================
+function spawnTraffic(){
+  const t = new Traffic();
+  traffics.push(t);
+  log(`📡 ${t.callsign} inbound request landing`);
+}
+
+function spawnPoint(){
+  const dx = finale.p2.x - finale.p1.x;
+  const dy = finale.p2.y - finale.p1.y;
+  const len = Math.hypot(dx,dy);
+  return {
+    x: CENTER.x + dx/len*500,
+    y: CENTER.y + dy/len*500
+  };
+}
+
+function headingFromFinale(){
+  return Math.atan2(finale.p2.y-finale.p1.y, finale.p2.x-finale.p1.x);
+}
+
+// ================= MOVE =================
+function move(t){
+  t.x -= Math.cos(t.heading)*t.speed*0.02;
+  t.y -= Math.sin(t.heading)*t.speed*0.02;
+}
+
+// ================= RADAR =================
+function radarPing(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawAirport();
+  traffics.forEach(t=>{
+    t.update();
+    drawTraffic(t);
+  });
+  traffics = traffics.filter(t=>t.state!=="DESPAWN");
+  updateStrips();
+}
+
+function drawAirport(){
+  ctx.fillStyle="white";
+  ctx.beginPath();
+  ctx.arc(CENTER.x,CENTER.y,6,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawTraffic(t){
+  ctx.fillStyle = t===selectedTraffic ? "yellow":"lime";
+  ctx.beginPath();
+  ctx.arc(t.x,t.y,4,0,Math.PI*2);
+  ctx.fill();
+}
+
+// ================= UI =================
+function updateStrips(){
+  strips.innerHTML="";
+  traffics.forEach(t=>{
+    const d=document.createElement("div");
+    d.className="strip";
+    d.textContent=`${t.callsign} | ${t.altitude}ft | 240kt | LFPO`;
+    d.onclick=()=>selectedTraffic=t;
+    strips.appendChild(d);
+  });
+}
+
+function log(msg){
+  combox.innerHTML+=msg+"<br>";
+  combox.scrollTop=combox.scrollHeight;
+}
+
+// ================= COMMANDS =================
+comInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter" && selectedTraffic){
+    log(`🗣 ${selectedTraffic.callsign} ${comInput.value}`);
+    if(comInput.value.includes("cleared")){
+      selectedTraffic.state="CLEARED";
+      log(`✈️ ${selectedTraffic.callsign} cleared to land`);
+    }
+    if(comInput.value.includes("abort")){
+      selectedTraffic.state="APPROACH";
+      log(`⚠️ ${selectedTraffic.callsign} going around`);
+    }
+    comInput.value="";
+  }
+});
+
+// ================= UTILS =================
+function rand(a,b){return Math.random()*(b-a)+a}
+</script>
+
+</body>
+</html>
