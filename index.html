@@ -167,7 +167,7 @@ const morseCodeMap = {
 };
 
 function translateMorse(code){
-  if(code === '_') return '_';
+  if(code === ' ') return ' ';
   return morseCodeMap[code] || '?';
 }
 
@@ -221,7 +221,7 @@ function processReceivedMorse(char,sender){
 
   // Silence long → /
   if(delta >= SILENCE_SLASH_TIME && !buf.slashAdded){
-    buf.output.push('_');
+    buf.output.push(' ');
     buf.slashAdded = true;
     updateTranslationForUser(sender);
   }
