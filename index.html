@@ -154,12 +154,21 @@ function emit(char) {
 
 // ================= AUTO-TRANSLATE =================
 const morseCodeMap = {
+  // Lettres
   '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H','..':'I',
   '.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
   '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
+  
+  // Chiffres
   '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6',
-  '--...':'7','---..':'8','----.':'9','.':' .',',':' ,','?':' ?'
+  '--...':'7','---..':'8','----.':'9',
+  
+  // Ponctuation (codes complets pour éviter conflit avec lettres)
+  '.-.-.-':'.',   // point
+  '--..--':',',   // virgule
+  '..--..':'?'    // point d'interrogation
 };
+
 
 let morseCurrentLetter = "";
 let morseWordBuffer = [];
@@ -199,11 +208,19 @@ function processReceivedMorse(char, dur) {
   const delta = lastReceivedTime ? now - lastReceivedTime : 0;
   lastReceivedTime = now;
 
+  // Fin de mot
   if(delta >= wordThreshold){
-    if(morseCurrentLetter) updateTranslation(true, true);
+    if(morseCurrentLetter){
+      // on traduit la lettre actuelle et ajoute un espace pour mot
+      updateTranslation(true, true); // force=true, isWord=true
+    }
     morseCurrentLetter = "";
-  } else if(delta >= letterThreshold){
-    if(morseCurrentLetter) updateTranslation(true);
+    // Ajout d’un "nouvel espace" pour le prochain mot
+    morseWordBuffer.push([]); // crée un nouveau tableau pour le prochain mot
+  }
+  // Fin de lettre
+  else if(delta >= letterThreshold){
+    if(morseCurrentLetter) updateTranslation(true); // force=true
     morseCurrentLetter = "";
   }
 
@@ -211,6 +228,7 @@ function processReceivedMorse(char, dur) {
   updateTranslation();
   scheduleTranslation();
 }
+
 
 function clearTranslation(){
   morseCurrentLetter = "";
@@ -221,13 +239,28 @@ function clearTranslation(){
 // ================= BRUIT DE FOND =================
 function startNoise() {
   if(noiseOscillator) return;
-  noiseOscillator = audioCtx.createOscillator();
-  noiseOscillator.type = 'white';
+
+  // Création d'un buffer de bruit
+  const bufferSize = 2 * audioCtx.sampleRate;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    // bruit blanc + filtrage pour rendre plus doux
+    output[i] = (Math.random() * 2 - 1) * 0.2; // amplitude réduite pour un grésillement agréable
+  }
+
+  const noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = noiseBuffer;
+  noiseSource.loop = true;
+
   const gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.05;
-  noiseOscillator.connect(gainNode);
+  gainNode.gain.value = 0.05; // faible volume pour que ce soit agréable
+
+  noiseSource.connect(gainNode);
   gainNode.connect(audioCtx.destination);
-  noiseOscillator.start();
+
+  noiseSource.start();
+  noiseOscillator = noiseSource;
   noiseGain = gainNode;
 }
 
@@ -240,6 +273,8 @@ function stopNoise() {
     noiseGain = null;
   }
 }
+
+
 
 // ================= RECEPTION =================
 function startListening() {
