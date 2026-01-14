@@ -286,29 +286,40 @@ function stopNoise(){
 
 // ================= RECEPTION =================
 function startListening(){
-  listening=true;
-  let lastRx=0;
+  listening = true;
+  let lastRx = 0;
 
-  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added',snap=>{
-    const d=snap.val();
-    if(!d||!d.by) return;
-    if(d.by===pseudo) return;
+  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added', snap => {
+    const d = snap.val();
+    if(!d || !d.by) return;
 
-    lastRx=Date.now();
+    // === TOUJOURS TRAITER LA TRADUCTION ===
+    if(document.getElementById('translateMode')?.checked){
+      processReceivedMorse(d.char, d.by);
+    }
+
+    // === AUDIO + VISUEL UNIQUEMENT SI PAS NOUS ===
+    if(d.by === pseudo) return;
+
+    lastRx = Date.now();
     startNoise();
 
-    playTone(800,d.dur);
-    drawSignal(userCanvases[d.by],d.char==='-'?80:40);
+    playTone(800, d.dur);
 
-    if(document.getElementById('translateMode')?.checked){
-      processReceivedMorse(d.char,d.by);
+    if(!userCanvases[d.by]){
+      userCanvases[d.by] = createUserCanvas(d.by);
     }
+
+    drawSignal(userCanvases[d.by], d.char === '-' ? 80 : 40);
   });
 
   setInterval(()=>{
-    if(Date.now()-lastRx>5000) stopNoise();
+    if(Date.now() - lastRx > 5000){
+      stopNoise();
+    }
   },1000);
 }
+
 
 </script>
 
