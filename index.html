@@ -214,21 +214,27 @@ function translateMorse(morse){
   return '?';
 }
 
-function updateTranslationForUser(sender,force=false,isWord=false){
+function updateTranslationForUser(sender, force=false, isWord=false){
   const buf=userBuffers[sender];
   if(force && buf.morseCurrentLetter){
     buf.morseWordBuffer.push([buf.morseCurrentLetter]);
     buf.morseCurrentLetter='';
   }
+
   let translated=buf.morseWordBuffer.map((letterArr,idx)=>{
     let chars=letterArr.map(c=>translateMorse(c)).join('');
     if(isWord && idx===buf.morseWordBuffer.length-1) chars+=' u';
     return chars;
   }).join(' ');
 
-  const div=document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
-  div.innerText=translated;
+  // Création de la div ou récupération
+  let div=document.getElementById(`receptionText-${sender}`);
+  if(!div) div=createUserDiv(sender);
+
+  // On affiche le pseudo devant la traduction
+  div.innerHTML=`<strong>${sender}:</strong> ${translated}`;
 }
+
 
 function scheduleTranslationForUser(sender){
   const buf=userBuffers[sender];
