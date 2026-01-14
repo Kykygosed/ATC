@@ -221,7 +221,7 @@ function processReceivedMorse(char,sender){
 
   // Silence long → /
   if(delta >= SILENCE_SLASH_TIME && !buf.slashAdded){
-    buf.output.push(' ');
+    buf.output.push('⠀');
     buf.slashAdded = true;
     updateTranslationForUser(sender);
   }
