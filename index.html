@@ -86,6 +86,9 @@ canvas{
   border-radius:8px;
   display:block;
 }
+button{
+  touch-action: manipulation;
+}
 
 /* ================= CONTROLS ================= */
 .controls{
@@ -109,9 +112,10 @@ canvas{
 }
 
 .morse-btn:active{
-  box-shadow: inset 0 0 0 2px #0af;
-  transform:scale(.96);
+  background:#0af;
+  color:#000;
 }
+
 
 .dot{color:#6cf;}
 .dash{color:#0af;}
@@ -159,13 +163,13 @@ canvas{
 
   <!-- AUTRES UTILISATEURS -->
   <div id="receptionText"></div>
+  
+<div class="controls">
+  <button class="morse-btn dot" onclick="emit('.')">•</button>
+  <button class="morse-btn dash" onclick="emit('-')">—</button>
+  <button class="clear-btn" onclick="clearTranslation()">Clear</button>
+</div>
 
-  <!-- CONTROLES -->
-  <div class="controls">
-    <button class="morse-btn dot" onclick="emit('.')">•</button>
-    <button class="morse-btn dash" onclick="emit('-')">—</button>
-    <button class="clear-btn" onclick="clearTranslation()">Clear</button>
-  </div>
 
 </div>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
