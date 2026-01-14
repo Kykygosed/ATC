@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Morse Radio – Stable</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-body{margin:0;background:#0b0b0b;color:#fff;font-family:Arial}
+body{margin:0;background:#0b0b0b;color:#fff;font-family:Arial;touch-action: manipulation;}
 #popup{position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:10}
 #popup input,#popup button{font-size:18px;padding:10px}
 #top{text-align:center;padding:15px}
@@ -12,9 +13,11 @@ body{margin:0;background:#0b0b0b;color:#fff;font-family:Arial}
 canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 .label{margin:6px;opacity:.7}
 #controls{display:flex;justify-content:center;gap:40px;padding:20px}
-.btn{width:120px;height:80px;font-size:36px;border:none;color:#fff;cursor:pointer}
+.btn{width:120px;height:80px;font-size:36px;border:none;color:#fff;cursor:pointer;touch-action: manipulation;}
 .dot{background:#c00}
 .dash{background:#0c0}
+#receptionText {text-align:center; font-size:24px; min-height:140px; line-height:1.4;}
+#autoTranslate {margin-top:10px;}
 </style>
 </head>
 <body>
@@ -33,7 +36,10 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 
 <canvas id="tx" width="1200" height="140"></canvas>
 <div class="label">Réception ↓</div>
-<canvas id="rx" width="1200" height="140"></canvas>
+<div id="receptionText"></div>
+<label id="autoTranslate">
+  <input type="checkbox" id="translateMode"> Mode auto traduction
+</label>
 
 <div id="controls">
   <button class="btn dot" onmousedown="emit('.')">•</button>
@@ -64,6 +70,12 @@ let listening = false;
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioCtx();
+const DOT = 60; // durée de base
+const DASH = DOT * 3;
+
+// ================= CANVAS =================
+const tx = document.getElementById('tx').getContext('2d');
+const receptionDiv = document.getElementById('receptionText');
 
 function playTone(frequency, duration) {
   const osc = audioCtx.createOscillator();
@@ -75,14 +87,6 @@ function playTone(frequency, duration) {
   osc.start();
   osc.stop(audioCtx.currentTime + duration / 1000);
 }
-
-// Morse timing standard
-const DOT = 60;
-const DASH = DOT * 3;
-
-// ================= CANVAS =================
-const tx = document.getElementById('tx').getContext('2d');
-const rx = document.getElementById('rx').getContext('2d');
 
 function scroll(ctx) {
   const img = ctx.getImageData(2, 0, ctx.canvas.width - 2, ctx.canvas.height);
@@ -102,15 +106,13 @@ function drawSignal(ctx, strength) {
 
 setInterval(() => {
   scroll(tx);
-  scroll(rx);
   drawNoise(tx);
-  drawNoise(rx);
 }, 40);
 
 // ================= UI =================
 function enterRadio() {
   pseudo = document.getElementById('pseudoInput').value.trim();
-  freq = document.getElementById('freqInput').value.trim().replace('.', '-'); // remplacer . par -
+  freq = document.getElementById('freqInput').value.trim().replace(/\./g, '-');
   if (!pseudo || !freq) return;
   document.getElementById('popup').style.display = 'none';
   if (!listening) startListening();
@@ -122,7 +124,6 @@ function emit(char) {
   playTone(1250, dur);
   drawSignal(tx, char === '-' ? 80 : 40);
 
-  // Envoyer vers Firebase
   db.ref(`${freq}/chats/emissions/MESSAGE`).push({
     char,
     dur,
@@ -132,6 +133,53 @@ function emit(char) {
     .catch(err => console.error("Erreur Firebase :", err));
 }
 
+// ================= AUTO-TRANSLATE =================
+const morseCodeMap = {
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H','..':'I',
+  '.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
+  '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
+  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6',
+  '--...':'7','---..':'8','----.':'9'
+};
+
+// Buffers pour auto-translate
+let morseCurrentLetter = "";
+let morseWordBuffer = [];
+let lastReceivedTime = 0;
+
+function updateTranslation() {
+  if(!document.getElementById('translateMode').checked) return;
+
+  let translated = morseWordBuffer.map(letterArr =>
+    letterArr.map(c => morseCodeMap[c]||'?').join('')
+  ).join(' ');
+
+  receptionDiv.innerText = translated;
+}
+
+function processReceivedMorse(char, dur) {
+  const now = Date.now();
+  const delta = lastReceivedTime ? now - lastReceivedTime : 0;
+  lastReceivedTime = now;
+
+  // Fin de mot
+  if(delta >= 7 * DOT){
+    if(morseCurrentLetter) morseWordBuffer.push([morseCurrentLetter]);
+    morseWordBuffer.push([]); // nouvel espace pour mot
+    morseCurrentLetter = "";
+  }
+  // Fin de lettre
+  else if(delta >= 3 * DOT){
+    if(morseCurrentLetter) morseWordBuffer.push([morseCurrentLetter]);
+    morseCurrentLetter = "";
+  }
+
+  // Ajouter le symbole courant
+  morseCurrentLetter += char;
+
+  updateTranslation();
+}
+
 // ================= RECEPTION =================
 function startListening() {
   listening = true;
@@ -139,12 +187,16 @@ function startListening() {
 
   db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added', snap => {
     const d = snap.val();
-    if (!d || d.by === pseudo) return; // ignorer ses propres messages
-    if (d.t <= lastTime) return;        // ignorer les messages anciens
+    if (!d || d.by === pseudo) return;
+    if (d.t <= lastTime) return;
     lastTime = d.t;
 
     playTone(800, d.dur);
-    drawSignal(rx, d.char === '-' ? 80 : 40);
+    receptionDiv.innerText = `Émission de ${d.by}: ${d.char}`;
+
+    if(document.getElementById('translateMode').checked){
+        processReceivedMorse(d.char, d.dur);
+    }
   });
 }
 </script>
