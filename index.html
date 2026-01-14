@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Morse Radio – Stable</title>
+<title>Morse Radio – Spectrogramme</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
 body{margin:0;background:#0b0b0b;color:#fff;font-family:Arial;touch-action: manipulation;}
@@ -37,6 +37,7 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 
 <canvas id="tx" width="1200" height="140"></canvas>
 <div class="label">Réception ↓</div>
+<canvas id="rx" width="1200" height="140"></canvas>
 <div id="receptionText"></div>
 <label id="autoTranslate">
   <input type="checkbox" id="translateMode"> Mode auto traduction
@@ -57,7 +58,7 @@ const firebaseConfig = {
   authDomain: "kyky-c3471.firebaseapp.com",
   databaseURL: "https://kyky-c3471-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "kyky-c3471",
-  storageBucket: "kyky-c3471.firebasestorage.app",
+  storageBucket: "kyky-c3471.appspot.com",
   messagingSenderId: "658643330578",
   appId: "1:658643330578:web:758dc26d5504a503e39acb"
 };
@@ -75,8 +76,14 @@ const audioCtx = new AudioCtx();
 const DOT = 60;
 const DASH = DOT * 3;
 
+// Bruit de fond pour récepteur
+let noiseGain = null;
+let noiseOscillator = null;
+let listeningUsers = 0;
+
 // ================= CANVAS =================
 const tx = document.getElementById('tx').getContext('2d');
+const rx = document.getElementById('rx').getContext('2d');
 const receptionDiv = document.getElementById('receptionText');
 
 function playTone(frequency, duration) {
@@ -90,15 +97,26 @@ function playTone(frequency, duration) {
   osc.stop(audioCtx.currentTime + duration / 1000);
 }
 
+// Canvas TX
 function scroll(ctx) {
   const img = ctx.getImageData(2, 0, ctx.canvas.width - 2, ctx.canvas.height);
   ctx.putImageData(img, 0, 0);
   ctx.clearRect(ctx.canvas.width - 2, 0, 2, ctx.canvas.height);
 }
 
+// Canvas RX
+function scrollRX() {
+  if(listeningUsers === 0) return; // ne défile que si quelqu'un est connecté
+  const img = rx.getImageData(2, 0, rx.canvas.width - 2, rx.canvas.height);
+  rx.putImageData(img, 0, 0);
+  rx.clearRect(rx.canvas.width - 2, 0, 2, rx.canvas.height);
+  // bruit de fond
+  drawNoise(rx);
+}
+
 function drawNoise(ctx) {
-  ctx.fillStyle = '#002';
-  ctx.fillRect(ctx.canvas.width - 2, ctx.canvas.height - 4, 2, 4);
+  ctx.fillStyle = '#003';
+  ctx.fillRect(ctx.canvas.width - 2, 0, 2, ctx.canvas.height);
 }
 
 function drawSignal(ctx, strength) {
@@ -108,7 +126,7 @@ function drawSignal(ctx, strength) {
 
 setInterval(() => {
   scroll(tx);
-  drawNoise(tx);
+  scrollRX();
 }, 40);
 
 // ================= UI =================
@@ -131,8 +149,7 @@ function emit(char) {
     dur,
     by: pseudo,
     t: Date.now()
-  }).then(() => console.log("Message envoyé !"))
-    .catch(err => console.error("Erreur Firebase :", err));
+  });
 }
 
 // ================= AUTO-TRANSLATE =================
@@ -141,8 +158,7 @@ const morseCodeMap = {
   '.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
   '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
   '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6',
-  '--...':'7','---..':'8','----.':'9',
-  '.-.-.-':'.','--..--':',','..--..':'?'
+  '--...':'7','---..':'8','----.':'9','.':' .',',':' ,','?':' ?'
 };
 
 let morseCurrentLetter = "";
@@ -150,29 +166,27 @@ let morseWordBuffer = [];
 let lastReceivedTime = 0;
 let translationTimer = null;
 
-const letterThreshold = 6 * DOT; // 3+3 units
-const wordThreshold   = 10 * DOT; // 7+3 units
+const letterThreshold = 6 * DOT;
+const wordThreshold = 10 * DOT;
 
 function updateTranslation(force=false, isWord=false) {
   if(!document.getElementById('translateMode').checked) return;
 
-  // Traduction immédiate de la lettre
   if(force && morseCurrentLetter){
     morseWordBuffer.push([morseCurrentLetter]);
     morseCurrentLetter = "";
   }
 
-  // Ajouter u pour marquer les espaces mots si isWord
+  // Construction du texte avec espaces "u" entre les mots
   let translated = morseWordBuffer.map((letterArr, idx) => {
-    let char = letterArr.map(c => morseCodeMap[c]||'?').join('');
-    if(isWord && idx === morseWordBuffer.length - 1) char += ' u';
-    return char;
+    let chars = letterArr.map(c => morseCodeMap[c] || '?').join('');
+    if(isWord && idx === morseWordBuffer.length-1) chars += ' u';
+    return chars;
   }).join(' ');
 
   receptionDiv.innerText = translated;
 }
 
-// Gérer le timer de traduction immédiate
 function scheduleTranslation() {
   if(translationTimer) clearTimeout(translationTimer);
   translationTimer = setTimeout(() => {
@@ -185,13 +199,10 @@ function processReceivedMorse(char, dur) {
   const delta = lastReceivedTime ? now - lastReceivedTime : 0;
   lastReceivedTime = now;
 
-  // Fin de mot si delta > wordThreshold
   if(delta >= wordThreshold){
-    if(morseCurrentLetter) updateTranslation(true, true); // lettre + u pour mot
+    if(morseCurrentLetter) updateTranslation(true, true);
     morseCurrentLetter = "";
-  }
-  // Fin de lettre si delta > letterThreshold
-  else if(delta >= letterThreshold){
+  } else if(delta >= letterThreshold){
     if(morseCurrentLetter) updateTranslation(true);
     morseCurrentLetter = "";
   }
@@ -201,11 +212,33 @@ function processReceivedMorse(char, dur) {
   scheduleTranslation();
 }
 
-// Clear translation
 function clearTranslation(){
   morseCurrentLetter = "";
   morseWordBuffer = [];
   receptionDiv.innerText = "";
+}
+
+// ================= BRUIT DE FOND =================
+function startNoise() {
+  if(noiseOscillator) return;
+  noiseOscillator = audioCtx.createOscillator();
+  noiseOscillator.type = 'white';
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.05;
+  noiseOscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  noiseOscillator.start();
+  noiseGain = gainNode;
+}
+
+function stopNoise() {
+  if(noiseOscillator){
+    noiseOscillator.stop();
+    noiseOscillator.disconnect();
+    noiseGain.disconnect();
+    noiseOscillator = null;
+    noiseGain = null;
+  }
 }
 
 // ================= RECEPTION =================
@@ -213,19 +246,37 @@ function startListening() {
   listening = true;
   let lastTime = 0;
 
-  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added', snap => {
+  // Détecter le nombre d'utilisateurs actifs
+  const userRef = db.ref(`${freq}/chats/emissions/MESSAGE`);
+  userRef.on('child_added', snap => {
     const d = snap.val();
     if (!d || d.by === pseudo) return;
-    if (d.t <= lastTime) return;
+
+    // Activer bruit et défilement si ce n'était pas déjà fait
+    listeningUsers = 1;
+    startNoise();
+
+    if(d.t <= lastTime) return;
     lastTime = d.t;
 
     playTone(800, d.dur);
-    receptionDiv.innerText = `Émission de ${d.by}: ${d.char}`;
+    drawSignal(rx, d.char === '-' ? 80 : 40);
 
     if(document.getElementById('translateMode').checked){
         processReceivedMorse(d.char, d.dur);
     }
   });
+
+  // Vérifier si plus aucun utilisateur n'émet
+  setInterval(() => {
+    // On pourrait vérifier Firebase pour les messages récents et arrêter bruit si personne
+    // Pour simplification, on arrête bruit si plus de child_added depuis 5s
+    const now = Date.now();
+    if(lastTime && now - lastTime > 5000){
+      listeningUsers = 0;
+      stopNoise();
+    }
+  }, 1000);
 }
 </script>
 </body>
