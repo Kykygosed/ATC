@@ -18,6 +18,7 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 .dash{background:#0c0}
 #receptionText {text-align:center; font-size:24px; min-height:140px; line-height:1.4;}
 #autoTranslate {margin-top:10px;}
+#clearBtn {margin-left:20px;font-size:16px;padding:5px 10px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -40,6 +41,7 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 <label id="autoTranslate">
   <input type="checkbox" id="translateMode"> Mode auto traduction
 </label>
+<button id="clearBtn" onclick="clearTranslation()">Clear</button>
 
 <div id="controls">
   <button class="btn dot" onmousedown="emit('.')">•</button>
@@ -139,7 +141,8 @@ const morseCodeMap = {
   '.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
   '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
   '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6',
-  '--...':'7','---..':'8','----.':'9'
+  '--...':'7','---..':'8','----.':'9',
+  '.-.-.-':'.','--..--':',','..--..':'?'
 };
 
 let morseCurrentLetter = "";
@@ -147,38 +150,62 @@ let morseWordBuffer = [];
 let lastReceivedTime = 0;
 let translationTimer = null;
 
-const letterThreshold = 3 * DOT + 3 * DOT; // 6 units
-const wordThreshold   = 7 * DOT + 3 * DOT; // 10 units
+const letterThreshold = 6 * DOT; // 3+3 units
+const wordThreshold   = 10 * DOT; // 7+3 units
 
-function updateTranslation(force=false) {
+function updateTranslation(force=false, isWord=false) {
   if(!document.getElementById('translateMode').checked) return;
 
-  // Traduction immédiate si force=true
+  // Traduction immédiate de la lettre
   if(force && morseCurrentLetter){
     morseWordBuffer.push([morseCurrentLetter]);
     morseCurrentLetter = "";
   }
 
-  let translated = morseWordBuffer.map(letterArr =>
-    letterArr.map(c => morseCodeMap[c]||'?').join('')
-  ).join(' ');
+  // Ajouter u pour marquer les espaces mots si isWord
+  let translated = morseWordBuffer.map((letterArr, idx) => {
+    let char = letterArr.map(c => morseCodeMap[c]||'?').join('');
+    if(isWord && idx === morseWordBuffer.length - 1) char += ' u';
+    return char;
+  }).join(' ');
 
   receptionDiv.innerText = translated;
 }
 
-// Gérer les pauses pour traduction immédiate
+// Gérer le timer de traduction immédiate
 function scheduleTranslation() {
   if(translationTimer) clearTimeout(translationTimer);
   translationTimer = setTimeout(() => {
-    // fin de lettre
     updateTranslation(true);
-  }, letterThreshold); // si pas de nouveau signal pendant la durée lettre, traduction
+  }, letterThreshold);
 }
 
 function processReceivedMorse(char, dur) {
+  const now = Date.now();
+  const delta = lastReceivedTime ? now - lastReceivedTime : 0;
+  lastReceivedTime = now;
+
+  // Fin de mot si delta > wordThreshold
+  if(delta >= wordThreshold){
+    if(morseCurrentLetter) updateTranslation(true, true); // lettre + u pour mot
+    morseCurrentLetter = "";
+  }
+  // Fin de lettre si delta > letterThreshold
+  else if(delta >= letterThreshold){
+    if(morseCurrentLetter) updateTranslation(true);
+    morseCurrentLetter = "";
+  }
+
   morseCurrentLetter += char;
-  updateTranslation(); // mettre à jour en direct
-  scheduleTranslation(); // planifier traduction lettre si pas de nouveau signal
+  updateTranslation();
+  scheduleTranslation();
+}
+
+// Clear translation
+function clearTranslation(){
+  morseCurrentLetter = "";
+  morseWordBuffer = [];
+  receptionDiv.innerText = "";
 }
 
 // ================= RECEPTION =================
