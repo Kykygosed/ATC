@@ -53,7 +53,6 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
 // ================= FIREBASE =================
-// ================= FIREBASE =================
 const firebaseConfig = {
   apiKey: "AIzaSyDxDzLbCnqYYVknoyHMzbE0gB_SRVLpgiw",
   authDomain: "kyky-c3471.firebaseapp.com",
@@ -77,18 +76,14 @@ const audioCtx = new AudioCtx();
 
 const DOT = 60;
 const DASH = DOT * 3;
-const LETTER_GAP = DOT * 9;
-const SILENCE_SLASH_TIME = 3000;
-
-// Bruit de fond
-let noiseOscillator = null;
-let noiseGain = null;
+const LETTER_GAP_TIME = DOT * 12;      // +3 units
+const WORD_GAP_TIME = 3000;
 
 // ================= CANVAS =================
 const tx = document.getElementById('tx').getContext('2d');
 const receptionDivContainer = document.getElementById('receptionText');
 
-let userBuffers = {};   // pseudo => buffer
+let userBuffers = {};   // pseudo => { current, output }
 let userCanvases = {};  // pseudo => ctx
 
 // ================= AUDIO =================
@@ -103,6 +98,43 @@ function playTone(freq, dur){
   osc.stop(audioCtx.currentTime + dur / 1000);
 }
 
+// ================= NOISE =================
+let noiseSource = null;
+let noiseGain = null;
+
+function startNoise(){
+  if(noiseSource) return;
+
+  const bufferSize = audioCtx.sampleRate * 2;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for(let i=0;i<data.length;i++){
+    data[i] = (Math.random()*2 - 1) * 0.12;
+  }
+
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = buffer;
+  noiseSource.loop = true;
+
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.05;
+
+  noiseSource.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noiseSource.start();
+}
+
+function stopNoise(){
+  if(noiseSource){
+    noiseSource.stop();
+    noiseSource.disconnect();
+    noiseGain.disconnect();
+    noiseSource = null;
+    noiseGain = null;
+  }
+}
+
 // ================= CANVAS =================
 function scroll(ctx){
   const img = ctx.getImageData(2,0,ctx.canvas.width-2,ctx.canvas.height);
@@ -111,7 +143,7 @@ function scroll(ctx){
 }
 
 function drawNoise(ctx){
-  ctx.fillStyle = '#003';
+  ctx.fillStyle = '#002';
   ctx.fillRect(ctx.canvas.width-2,0,2,ctx.canvas.height);
 }
 
@@ -132,27 +164,9 @@ setInterval(()=>{
 function enterRadio(){
   pseudo = document.getElementById('pseudoInput').value.trim();
   freq = document.getElementById('freqInput').value.trim().replace(/\./g,'-');
-  if(!pseudo||!freq) return;
+  if(!pseudo || !freq) return;
   document.getElementById('popup').style.display='none';
   if(!listening) startListening();
-}
-
-// ================= EMISSION =================
-function emit(char){
-  const dur = char==='-' ? DASH : DOT;
-  playTone(1250,dur);
-  drawSignal(tx,char==='-'?80:40);
-
-  db.ref(`${freq}/chats/emissions/MESSAGE`).push({
-    char,
-    dur,
-    by:pseudo,
-    t:Date.now()
-  });
-
-  if(document.getElementById('translateMode')?.checked){
-    processReceivedMorse(char,pseudo);
-  }
 }
 
 // ================= MORSE MAP =================
@@ -163,11 +177,10 @@ const morseCodeMap = {
   '...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
   '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4',
   '.....':'5','-....':'6','--...':'7','---..':'8','----.':'9',
-  '.-.-.-':'.','--..--':',','..--..':'?'
+  '.-.-.-':'.','--..--':',','..--..':'?','/':' '
 };
 
 function translateMorse(code){
-  if(code === ' ') return ' ';
   return morseCodeMap[code] || '?';
 }
 
@@ -185,103 +198,53 @@ function createUserDiv(sender){
 function createUserCanvas(sender){
   const canvas = document.createElement('canvas');
   canvas.width = 1200;
-  canvas.height = 140;
-  canvas.style.background = '#1b1b1b';
+  canvas.height = 120;
+  canvas.style.background = '#111';
   document.body.appendChild(canvas);
   return canvas.getContext('2d');
 }
 
-function updateTranslationForUser(sender){
+function updateTranslation(sender){
   const buf = userBuffers[sender];
   const div = document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
-
-  const translated = buf.output.map(c=>translateMorse(c)).join(' ');
-  div.innerHTML = `<strong>${sender}:</strong> ${translated}`;
+  const txt = buf.output.map(c=>translateMorse(c)).join('');
+  div.innerHTML = `<strong>${sender}:</strong> ${txt}`;
 }
 
-function processReceivedMorse(char,sender){
-  if(!userBuffers[sender]){
-    userBuffers[sender]={
-      current:'',
-      output:[],
-      lastTime:0,
-      slashAdded:false,
-      timer:null
-    };
-  }
+// ================= EMISSION =================
+let letterTimer = null;
+let wordTimer = null;
 
-  if(!userCanvases[sender]){
-    userCanvases[sender]=createUserCanvas(sender);
-  }
+function emit(char){
+  const dur = char==='-' ? DASH : DOT;
+  playTone(1250,dur);
+  drawSignal(tx,char==='-'?80:40);
 
-  const buf = userBuffers[sender];
-  const now = Date.now();
-  const delta = buf.lastTime ? now - buf.lastTime : 0;
-  buf.lastTime = now;
+  db.ref(`${freq}/chats/emissions/MESSAGE`).push({
+    type:'signal',
+    char,
+    by:pseudo,
+    t:Date.now()
+  });
 
-  // Silence long → /
-  if(delta >= SILENCE_SLASH_TIME && !buf.slashAdded){
-    buf.output.push(' ');
-    buf.slashAdded = true;
-    updateTranslationForUser(sender);
-  }
+  clearTimeout(letterTimer);
+  clearTimeout(wordTimer);
 
-  buf.slashAdded = false;
-  buf.current += char;
+  letterTimer = setTimeout(()=>{
+    db.ref(`${freq}/chats/emissions/MESSAGE`).push({
+      type:'letter_gap',
+      by:pseudo,
+      t:Date.now()
+    });
+  }, LETTER_GAP_TIME);
 
-  clearTimeout(buf.timer);
-  buf.timer = setTimeout(()=>{
-    if(buf.current){
-      buf.output.push(buf.current);
-      buf.current='';
-      updateTranslationForUser(sender);
-    }
-  },LETTER_GAP);
-}
-
-// ================= CLEAR =================
-function clearTranslation(){
-  for(const sender in userBuffers){
-    userBuffers[sender].current='';
-    userBuffers[sender].output=[];
-    userBuffers[sender].slashAdded=false;
-    const div=document.getElementById(`receptionText-${sender}`);
-    if(div) div.innerHTML=`<strong>${sender}:</strong> `;
-  }
-}
-
-// ================= BRUIT DE FOND =================
-function startNoise(){
-  if(noiseOscillator) return;
-
-  const bufferSize = audioCtx.sampleRate * 2;
-  const noiseBuffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-
-  for(let i=0;i<data.length;i++){
-    data[i]=(Math.random()*2-1)*0.15;
-  }
-
-  noiseOscillator = audioCtx.createBufferSource();
-  noiseOscillator.buffer = noiseBuffer;
-  noiseOscillator.loop = true;
-
-  noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.05;
-
-  noiseOscillator.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
-  noiseOscillator.start();
-}
-
-function stopNoise(){
-  if(noiseOscillator){
-    noiseOscillator.stop();
-    noiseOscillator.disconnect();
-    noiseGain.disconnect();
-    noiseOscillator=null;
-    noiseGain=null;
-  }
+  wordTimer = setTimeout(()=>{
+    db.ref(`${freq}/chats/emissions/MESSAGE`).push({
+      type:'word_gap',
+      by:pseudo,
+      t:Date.now()
+    });
+  }, WORD_GAP_TIME);
 }
 
 // ================= RECEPTION =================
@@ -289,39 +252,66 @@ function startListening(){
   listening = true;
   let lastRx = 0;
 
-  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added', snap => {
+  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added', snap=>{
     const d = snap.val();
     if(!d || !d.by) return;
 
-    // === TOUJOURS TRAITER LA TRADUCTION ===
-    if(document.getElementById('translateMode')?.checked){
-      processReceivedMorse(d.char, d.by);
+    if(!userBuffers[d.by]){
+      userBuffers[d.by]={ current:'', output:[] };
     }
-
-    // === AUDIO + VISUEL UNIQUEMENT SI PAS NOUS ===
-    if(d.by === pseudo) return;
-
-    lastRx = Date.now();
-    startNoise();
-
-    playTone(800, d.dur);
-
     if(!userCanvases[d.by]){
-      userCanvases[d.by] = createUserCanvas(d.by);
+      userCanvases[d.by]=createUserCanvas(d.by);
     }
 
-    drawSignal(userCanvases[d.by], d.char === '-' ? 80 : 40);
+    if(d.type==='signal'){
+      userBuffers[d.by].current += d.char;
+      if(d.by!==pseudo){
+        playTone(800, d.char==='-'?DASH:DOT);
+        drawSignal(userCanvases[d.by], d.char==='-'?80:40);
+        startNoise();
+        lastRx=Date.now();
+      }
+    }
+
+    if(d.type==='letter_gap'){
+      const buf=userBuffers[d.by];
+      if(buf.current){
+        buf.output.push(buf.current);
+        buf.current='';
+        updateTranslation(d.by);
+      }
+    }
+
+    if(d.type==='word_gap'){
+      const buf=userBuffers[d.by];
+      if(buf.current){
+        buf.output.push(buf.current);
+        buf.current='';
+      }
+      buf.output.push('/');
+      updateTranslation(d.by);
+    }
   });
 
   setInterval(()=>{
-    if(Date.now() - lastRx > 5000){
-      stopNoise();
-    }
+    if(Date.now()-lastRx>5000) stopNoise();
   },1000);
 }
 
-
+// ================= CLEAR =================
+function clearTranslation(){
+  for(const u in userBuffers){
+    userBuffers[u].current='';
+    userBuffers[u].output=[];
+    const div=document.getElementById(`receptionText-${u}`);
+    if(div) div.innerHTML=`<strong>${u}:</strong> `;
+  }
+}
 </script>
+
+
+
+
 
 </body>
 </html>
