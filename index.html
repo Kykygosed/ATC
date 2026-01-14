@@ -53,6 +53,7 @@ canvas{width:100%;height:140px;background:#1b1b1b;display:block}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
 // ================= FIREBASE =================
+// ================= FIREBASE =================
 const firebaseConfig = {
   apiKey: "AIzaSyDxDzLbCnqYYVknoyHMzbE0gB_SRVLpgiw",
   authDomain: "kyky-c3471.firebaseapp.com",
@@ -73,52 +74,42 @@ let listening = false;
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioCtx();
+
 const DOT = 60;
 const DASH = DOT * 3;
+const LETTER_GAP = DOT * 9;
+const SILENCE_SLASH_TIME = 3000;
 
-// Bruit de fond pour récepteur
-let noiseGain = null;
+// Bruit de fond
 let noiseOscillator = null;
-let listeningUsers = {}; // pseudo => actif
+let noiseGain = null;
 
 // ================= CANVAS =================
 const tx = document.getElementById('tx').getContext('2d');
 const receptionDivContainer = document.getElementById('receptionText');
 
-// Buffers par utilisateur
-let userBuffers = {}; // pseudo => {morseCurrentLetter, morseWordBuffer, lastReceivedTime}
-let userCanvases = {}; // pseudo => ctx
+let userBuffers = {};   // pseudo => buffer
+let userCanvases = {};  // pseudo => ctx
 
-function playTone(frequency, duration) {
+// ================= AUDIO =================
+function playTone(freq, dur){
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.frequency.value = frequency;
+  osc.frequency.value = freq;
   gain.gain.value = 0.25;
   osc.connect(gain);
   gain.connect(audioCtx.destination);
   osc.start();
-  osc.stop(audioCtx.currentTime + duration / 1000);
+  osc.stop(audioCtx.currentTime + dur / 1000);
 }
 
-// Canvas TX
-function scroll(ctx) {
-  const img = ctx.getImageData(2,0,ctx.canvas.width-2, ctx.canvas.height);
+// ================= CANVAS =================
+function scroll(ctx){
+  const img = ctx.getImageData(2,0,ctx.canvas.width-2,ctx.canvas.height);
   ctx.putImageData(img,0,0);
   ctx.clearRect(ctx.canvas.width-2,0,2,ctx.canvas.height);
 }
 
-// Canvas RX par utilisateur
-function scrollRXUsers(){
-  for(let user in userCanvases){
-    const ctx = userCanvases[user];
-    const img = ctx.getImageData(2,0,ctx.canvas.width-2, ctx.canvas.height);
-    ctx.putImageData(img,0,0);
-    ctx.clearRect(ctx.canvas.width-2,0,2,ctx.canvas.height);
-    drawNoise(ctx);
-  }
-}
-
-// bruit léger
 function drawNoise(ctx){
   ctx.fillStyle = '#003';
   ctx.fillRect(ctx.canvas.width-2,0,2,ctx.canvas.height);
@@ -131,7 +122,10 @@ function drawSignal(ctx,strength){
 
 setInterval(()=>{
   scroll(tx);
-  scrollRXUsers();
+  for(const u in userCanvases){
+    scroll(userCanvases[u]);
+    drawNoise(userCanvases[u]);
+  }
 },40);
 
 // ================= UI =================
@@ -145,153 +139,139 @@ function enterRadio(){
 
 // ================= EMISSION =================
 function emit(char){
-  const dur = char==='-'?DASH:DOT;
+  const dur = char==='-' ? DASH : DOT;
   playTone(1250,dur);
   drawSignal(tx,char==='-'?80:40);
 
-  // Envoyer à Firebase
   db.ref(`${freq}/chats/emissions/MESSAGE`).push({
     char,
     dur,
-    by: pseudo,
-    t: Date.now()
+    by:pseudo,
+    t:Date.now()
   });
 
-  // Auto-translate côté local pour notre émission
-  if(document.getElementById('translateMode').checked){
-    processReceivedMorse(char,dur,pseudo);
+  if(document.getElementById('translateMode')?.checked){
+    processReceivedMorse(char,pseudo);
   }
 }
 
-// ================= AUTO-TRANSLATE =================
+// ================= MORSE MAP =================
 const morseCodeMap = {
-  // Lettres
-  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H','..':'I',
-  '.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
-  '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
-  // Chiffres
-  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6',
-  '--...':'7','---..':'8','----.':'9',
-  // Ponctuation
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G',
+  '....':'H','..':'I','.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N',
+  '---':'O','.--.':'P','--.-':'Q','.-.':'R','...':'S','-':'T','..-':'U',
+  '...-':'V','.--':'W','-..-':'X','-.--':'Y','--..':'Z',
+  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4',
+  '.....':'5','-....':'6','--...':'7','---..':'8','----.':'9',
   '.-.-.-':'.','--..--':',','..--..':'?'
 };
 
-const letterThreshold = 6*DOT;
-const wordThreshold = 10*DOT;
-
-// Traduction par utilisateur
-function processReceivedMorse(char,dur,sender){
-  if(!userBuffers[sender]) userBuffers[sender]={morseCurrentLetter:'',morseWordBuffer:[],lastReceivedTime:0};
-  if(!userCanvases[sender]) userCanvases[sender]=createUserCanvas(sender);
-  if(!listeningUsers[sender]) { listeningUsers[sender]=true; startNoise(); }
-
-  const buf=userBuffers[sender];
-  const now=Date.now();
-  const delta=buf.lastReceivedTime?now-buf.lastReceivedTime:0;
-  buf.lastReceivedTime=now;
-
-  // Fin de mot
-  if(delta>=wordThreshold){
-    if(buf.morseCurrentLetter){
-      updateTranslationForUser(sender,true,true);
-    }
-    buf.morseCurrentLetter='';
-    buf.morseWordBuffer.push([]);
-  }
-  // Fin de lettre
-  else if(delta>=letterThreshold){
-    if(buf.morseCurrentLetter) updateTranslationForUser(sender,true);
-    buf.morseCurrentLetter='';
-  }
-
-  buf.morseCurrentLetter+=char;
-  updateTranslationForUser(sender);
-  scheduleTranslationForUser(sender);
+function translateMorse(code){
+  if(code === '/') return '/';
+  return morseCodeMap[code] || '?';
 }
 
-function translateMorse(morse){
-  if(morseCodeMap[morse]) return morseCodeMap[morse];
-  return '?';
-}
-
-function updateTranslationForUser(sender, force=false, isWord=false){
-  const buf=userBuffers[sender];
-  if(force && buf.morseCurrentLetter){
-    buf.morseWordBuffer.push([buf.morseCurrentLetter]);
-    buf.morseCurrentLetter='';
-  }
-
-  let translated=buf.morseWordBuffer.map((letterArr,idx)=>{
-    let chars=letterArr.map(c=>translateMorse(c)).join('');
-    if(isWord && idx===buf.morseWordBuffer.length-1) chars+=' u';
-    return chars;
-  }).join(' ');
-
-  // Création de la div ou récupération
-  let div=document.getElementById(`receptionText-${sender}`);
-  if(!div) div=createUserDiv(sender);
-
-  // On affiche le pseudo devant la traduction
-  div.innerHTML=`<strong>${sender}:</strong> ${translated}`;
-}
-
-
-function scheduleTranslationForUser(sender){
-  const buf=userBuffers[sender];
-  if(buf.translationTimer) clearTimeout(buf.translationTimer);
-  buf.translationTimer=setTimeout(()=>updateTranslationForUser(sender,true),letterThreshold);
-}
-
+// ================= AUTO-TRANSLATE =================
 function createUserDiv(sender){
-  const div=document.createElement('div');
-  div.id=`receptionText-${sender}`;
-  div.style.marginTop='10px';
-  div.style.fontSize='20px';
-  div.style.minHeight='30px';
+  const div = document.createElement('div');
+  div.id = `receptionText-${sender}`;
+  div.style.marginTop = '10px';
+  div.style.fontSize = '20px';
+  div.innerHTML = `<strong>${sender}:</strong> `;
   receptionDivContainer.appendChild(div);
   return div;
 }
 
 function createUserCanvas(sender){
-  const canvas=document.createElement('canvas');
-  canvas.width=1200;
-  canvas.height=140;
-  canvas.style.display='block';
-  canvas.style.background='#1b1b1b';
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 140;
+  canvas.style.background = '#1b1b1b';
   document.body.appendChild(canvas);
   return canvas.getContext('2d');
 }
 
+function updateTranslationForUser(sender){
+  const buf = userBuffers[sender];
+  const div = document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
+
+  const translated = buf.output.map(c=>translateMorse(c)).join(' ');
+  div.innerHTML = `<strong>${sender}:</strong> ${translated}`;
+}
+
+function processReceivedMorse(char,sender){
+  if(!userBuffers[sender]){
+    userBuffers[sender]={
+      current:'',
+      output:[],
+      lastTime:0,
+      slashAdded:false,
+      timer:null
+    };
+  }
+
+  if(!userCanvases[sender]){
+    userCanvases[sender]=createUserCanvas(sender);
+  }
+
+  const buf = userBuffers[sender];
+  const now = Date.now();
+  const delta = buf.lastTime ? now - buf.lastTime : 0;
+  buf.lastTime = now;
+
+  // Silence long → /
+  if(delta >= SILENCE_SLASH_TIME && !buf.slashAdded){
+    buf.output.push('/');
+    buf.slashAdded = true;
+    updateTranslationForUser(sender);
+  }
+
+  buf.slashAdded = false;
+  buf.current += char;
+
+  clearTimeout(buf.timer);
+  buf.timer = setTimeout(()=>{
+    if(buf.current){
+      buf.output.push(buf.current);
+      buf.current='';
+      updateTranslationForUser(sender);
+    }
+  },LETTER_GAP);
+}
+
+// ================= CLEAR =================
 function clearTranslation(){
-  for(let sender in userBuffers){
-    userBuffers[sender].morseCurrentLetter='';
-    userBuffers[sender].morseWordBuffer=[];
+  for(const sender in userBuffers){
+    userBuffers[sender].current='';
+    userBuffers[sender].output=[];
+    userBuffers[sender].slashAdded=false;
     const div=document.getElementById(`receptionText-${sender}`);
-    if(div) div.innerText='';
+    if(div) div.innerHTML=`<strong>${sender}:</strong> `;
   }
 }
 
 // ================= BRUIT DE FOND =================
 function startNoise(){
   if(noiseOscillator) return;
-  const bufferSize=2*audioCtx.sampleRate;
-  const noiseBuffer=audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
-  const output=noiseBuffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++) output[i]=(Math.random()*2-1)*0.2;
 
-  const noiseSource=audioCtx.createBufferSource();
-  noiseSource.buffer=noiseBuffer;
-  noiseSource.loop=true;
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
 
-  const gainNode=audioCtx.createGain();
-  gainNode.gain.value=0.05;
+  for(let i=0;i<data.length;i++){
+    data[i]=(Math.random()*2-1)*0.15;
+  }
 
-  noiseSource.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+  noiseOscillator = audioCtx.createBufferSource();
+  noiseOscillator.buffer = noiseBuffer;
+  noiseOscillator.loop = true;
 
-  noiseSource.start();
-  noiseOscillator=noiseSource;
-  noiseGain=gainNode;
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.05;
+
+  noiseOscillator.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noiseOscillator.start();
 }
 
 function stopNoise(){
@@ -307,33 +287,29 @@ function stopNoise(){
 // ================= RECEPTION =================
 function startListening(){
   listening=true;
-  let lastTime=0;
+  let lastRx=0;
 
-  const userRef=db.ref(`${freq}/chats/emissions/MESSAGE`);
-  userRef.on('child_added',snap=>{
+  db.ref(`${freq}/chats/emissions/MESSAGE`).on('child_added',snap=>{
     const d=snap.val();
     if(!d||!d.by) return;
     if(d.by===pseudo) return;
 
-    processReceivedMorse(d.char,d.dur,d.by);
-
-    if(d.t<=lastTime) return;
-    lastTime=d.t;
+    lastRx=Date.now();
+    startNoise();
 
     playTone(800,d.dur);
     drawSignal(userCanvases[d.by],d.char==='-'?80:40);
+
+    if(document.getElementById('translateMode')?.checked){
+      processReceivedMorse(d.char,d.by);
+    }
   });
 
-  // Vérifier si utilisateur inactif
   setInterval(()=>{
-    const now=Date.now();
-    let active=false;
-    for(let u in userBuffers){
-      if(now-userBuffers[u].lastReceivedTime<5000) active=true;
-    }
-    if(!active) stopNoise();
+    if(Date.now()-lastRx>5000) stopNoise();
   },1000);
 }
+
 </script>
 
 </body>
