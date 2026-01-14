@@ -70,7 +70,7 @@ let listening = false;
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioCtx();
-const DOT = 60; // durée de base
+const DOT = 60;
 const DASH = DOT * 3;
 
 // ================= CANVAS =================
@@ -142,7 +142,6 @@ const morseCodeMap = {
   '--...':'7','---..':'8','----.':'9'
 };
 
-// Buffers pour auto-translate
 let morseCurrentLetter = "";
 let morseWordBuffer = [];
 let lastReceivedTime = 0;
@@ -162,21 +161,21 @@ function processReceivedMorse(char, dur) {
   const delta = lastReceivedTime ? now - lastReceivedTime : 0;
   lastReceivedTime = now;
 
-  // Fin de mot
-  if(delta >= 7 * DOT){
+  // ajout d'un buffer de 3 units pour fiabilité
+  const letterThreshold = 3 * DOT + 3 * DOT; // 6 units
+  const wordThreshold = 7 * DOT + 3 * DOT;   // 10 units
+
+  if(delta >= wordThreshold){
     if(morseCurrentLetter) morseWordBuffer.push([morseCurrentLetter]);
     morseWordBuffer.push([]); // nouvel espace pour mot
     morseCurrentLetter = "";
   }
-  // Fin de lettre
-  else if(delta >= 3 * DOT){
+  else if(delta >= letterThreshold){
     if(morseCurrentLetter) morseWordBuffer.push([morseCurrentLetter]);
     morseCurrentLetter = "";
   }
 
-  // Ajouter le symbole courant
   morseCurrentLetter += char;
-
   updateTranslation();
 }
 
