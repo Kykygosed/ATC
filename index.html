@@ -398,14 +398,24 @@ function startListening(){
     }
 
     if(d.type==='signal'){
-      userBuffers[d.by].current += d.char;
-      if(d.by!==pseudo){
-        playTone(800, d.char==='-'?DASH:DOT);
-        drawSignal(userCanvases[d.by], d.char==='-'?80:40);
-        startNoise();
-        lastRx=Date.now();
-      }
-    }
+  userBuffers[d.by].current += d.char;
+
+  if(d.by!==pseudo){
+    playTone(800, d.char==='-'?DASH:DOT);
+
+    // ⏱️ Décalage visuel pour éviter que les caractères se collent
+    setTimeout(()=>{
+      drawSignal(
+        userCanvases[d.by],
+        d.char === '-' ? 80 : 40
+      );
+    }, 80); // ← ajuste 60–120 ms si besoin
+
+    startNoise();
+    lastRx = Date.now();
+  }
+}
+
 
     if(d.type==='letter_gap'){
       const buf=userBuffers[d.by];
