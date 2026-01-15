@@ -38,6 +38,12 @@ body{
   margin:auto;
   padding:25px;
 }
+#freqSlider {
+  width: 100%;       /* occupe toute la largeur disponible */
+  max-width: 600px;  /* largeur max si tu veux limiter */
+  height: 16px;      /* un peu plus large pour mieux cliquer */
+  margin: 10px 0;
+}
 
 /* ================= FREQUENCE ================= */
 .freq-box{
@@ -138,7 +144,13 @@ button{
   <div>
     <input id="pseudoInput" placeholder="Pseudo"><br><br>
     <label for="freqSlider">Fréquence : <span id="freqLabel">122.000</span> MHz</label><br>
-    <input type="range" id="freqSlider" min="118" max="137" step="0.001" value="122"><br><br>
+
+<div style="display:flex; align-items:center; gap:10px;">
+  <button id="freqMinus">- 1 MHz</button>
+  <input type="range" id="freqSlider" min="118" max="137" step="0.001" value="122">
+  <button id="freqPlus">+ 1 MHz</button>
+</div>
+
     <button onclick="enterRadio()">Entrer</button>
   </div>
 </div>
@@ -197,13 +209,11 @@ let listening = false;
 let autoTranslate = true;   // ← ICI
 
   // slider et label pour fréquence
-const freqSlider = document.getElementById('freqSlider');   // à créer dans le HTML
-const freqLabel  = document.getElementById('freqLabel');    // <span> pour afficher la valeur
+const freqSlider = document.getElementById('freqSlider');
+const freqLabel  = document.getElementById('freqLabel');
+const freqDisplay = document.getElementById('freqDisplay');
 
-// mettre à jour le label quand le slider bouge
-freqSlider.addEventListener('input', () => {
-  freqLabel.textContent = parseFloat(freqSlider.value).toFixed(3);
-});
+
 
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -240,7 +250,30 @@ function playTone(freq, dur){
   osc.start();
   osc.stop(audioCtx.currentTime + dur / 1000);
 }
+function updateFreqDisplay() {
+  const val = parseFloat(freqSlider.value).toFixed(3);
+  freqLabel.textContent = val;
+  freqDisplay.textContent = val + " MHz";
+}
 
+// mise à jour quand on bouge le slider
+freqSlider.addEventListener('input', updateFreqDisplay);
+
+// bouton +
+document.getElementById('freqPlus').addEventListener('click', () => {
+  let val = parseFloat(freqSlider.value);
+  val = Math.min(val + 1, parseFloat(freqSlider.max)); // ne dépasse pas max
+  freqSlider.value = val.toFixed(3);
+  updateFreqDisplay();
+});
+
+// bouton -
+document.getElementById('freqMinus').addEventListener('click', () => {
+  let val = parseFloat(freqSlider.value);
+  val = Math.max(val - 1, parseFloat(freqSlider.min)); // ne descend pas en dessous de min
+  freqSlider.value = val.toFixed(3);
+  updateFreqDisplay();
+});
 // ================= NOISE =================
 let noiseSource = null;
 let noiseGain = null;
