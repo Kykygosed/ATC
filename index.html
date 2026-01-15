@@ -275,12 +275,17 @@ function drawNoise(ctx){
 }
 
 function drawSignal(ctx, strength){
-  const bandHeight = 12;                 // épaisseur de la bande
-  const y = ctx.canvas.height/2 - bandHeight/2;
-
   ctx.fillStyle = '#0af';
-  ctx.fillRect(ctx.canvas.width - strength, y, strength, bandHeight);
+
+  // trait vertical fin, centré
+  ctx.fillRect(
+    ctx.canvas.width - 2,
+    ctx.canvas.height - strength,
+    2,
+    strength
+  );
 }
+
 
 
 setInterval(()=>{
