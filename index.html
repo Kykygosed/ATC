@@ -137,7 +137,8 @@ button{
 <div id="popup">
   <div>
     <input id="pseudoInput" placeholder="Pseudo"><br><br>
-    <input id="freqInput" placeholder="Fréquence"><br><br>
+    <label for="freqSlider">Fréquence : <span id="freqLabel">122.000</span> MHz</label><br>
+    <input type="range" id="freqSlider" min="118" max="137" step="0.001" value="122"><br><br>
     <button onclick="enterRadio()">Entrer</button>
   </div>
 </div>
@@ -145,7 +146,7 @@ button{
 <div class="app">
 
   <!-- FREQUENCE -->
-  <div class="freq-box" id="freqDisplay">1222.80</div>
+  <div class="freq-box" id="freqDisplay">Fréquence active</div>
 
   <!-- AUTO MODE -->
   <label class="auto">
@@ -194,6 +195,15 @@ let pseudo = "";
 let freq = "1220-80";
 let listening = false;
 let autoTranslate = true;   // ← ICI
+
+  // slider et label pour fréquence
+const freqSlider = document.getElementById('freqSlider');   // à créer dans le HTML
+const freqLabel  = document.getElementById('freqLabel');    // <span> pour afficher la valeur
+
+// mettre à jour le label quand le slider bouge
+freqSlider.addEventListener('input', () => {
+  freqLabel.textContent = parseFloat(freqSlider.value).toFixed(3);
+});
 
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -305,7 +315,7 @@ setInterval(()=>{
 // ================= UI =================
 function enterRadio(){
   pseudo = document.getElementById('pseudoInput').value.trim();
-  freq = document.getElementById('freqInput').value.trim().replace(/\./g,'-');
+  freq = parseFloat(freqSlider.value).toFixed(3).replace(/\./g,'-'); // ex: 122.800 → 122-800
   if(!pseudo || !freq) return;
   document.getElementById('popup').style.display='none';
   if(!listening) startListening();
