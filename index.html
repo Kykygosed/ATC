@@ -347,14 +347,69 @@ function createUserCanvas(sender){
 }
 
 function updateTranslation(sender){
-  if(!autoTranslate) return;   // ⬅️ LIGNE CRUCIALE
+  if(!autoTranslate) return;
 
   const buf = userBuffers[sender];
   const div = document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
-  const txt = buf.output.map(c=>translateMorse(c)).join('');
+  const txt = buf.output.map(c => translateMorse(c)).join('');
   div.innerHTML = `<strong>${sender}:</strong> ${txt}`;
+
+  // Vérifie si SOS a été envoyé
+  checkSOS(sender);
 }
 
+
+function checkSOS(sender){
+  const buf = userBuffers[sender];
+  if(!buf) return;
+
+  // récupérer le texte traduit en majuscule
+  const txt = buf.output.map(c => translateMorse(c)).join('').toUpperCase();
+
+  // si SOS détecté → lancer alarme
+  if(txt.includes("SOS")){
+    startSOSAlarm();
+  }
+}
+
+  let sosOsc = null;
+let sosGain = null;
+
+function startSOSAlarm(){
+  if(sosOsc) return; // déjà en cours
+
+  const freqs = [880, 660, 880]; // exemple : bip montant/descendant
+  let i = 0;
+
+  sosOsc = audioCtx.createOscillator();
+  sosGain = audioCtx.createGain();
+
+  sosOsc.type = 'square';
+  sosOsc.frequency.value = freqs[i];
+  sosGain.gain.value = 0.3;
+
+  sosOsc.connect(sosGain);
+  sosGain.connect(audioCtx.destination);
+  sosOsc.start();
+
+  // changer fréquence toutes les 200ms pour faire un "bip SOS"
+  sosOsc.interval = setInterval(()=>{
+    i = (i+1)%freqs.length;
+    sosOsc.frequency.setValueAtTime(freqs[i], audioCtx.currentTime);
+  }, 200);
+}
+
+  function stopSOSAlarm(){
+  if(!sosOsc) return;
+
+  clearInterval(sosOsc.interval);
+  sosOsc.stop();
+  sosOsc.disconnect();
+  sosGain.disconnect();
+
+  sosOsc = null;
+  sosGain = null;
+}
 
 
 // ================= EMISSION =================
@@ -462,7 +517,14 @@ function clearTranslation(){
     const div=document.getElementById(`receptionText-${u}`);
     if(div) div.innerHTML=`<strong>${u}:</strong> `;
   }
+
+  // Supprime les messages sur Firebase pour cette fréquence
+  db.ref(`${freq}/chats/emissions/MESSAGE`).remove();
+
+  // Arrête l'alarme SOS si elle était active
+  stopSOSAlarm();
 }
+
 </script>
 
 
