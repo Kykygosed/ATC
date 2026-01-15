@@ -193,6 +193,7 @@ const db = firebase.database();
 let pseudo = "";
 let freq = "1220-80";
 let listening = false;
+let autoTranslate = true;   // ← ICI
 
 // ================= AUDIO =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -200,8 +201,10 @@ const audioCtx = new AudioCtx();
 
 const DOT = 60;
 const DASH = DOT * 3;
-const LETTER_GAP_TIME = DOT * 12;      // +3 units
-const WORD_GAP_TIME = 3000;
+
+const LETTER_GAP_TIME = DOT * 3;   // au lieu de 12
+const WORD_GAP_TIME   = DOT * 7;   // au lieu de 3000 ms
+
 
 // ================= CANVAS =================
 const tx = document.getElementById('tx').getContext('2d');
@@ -271,10 +274,14 @@ function drawNoise(ctx){
   ctx.fillRect(ctx.canvas.width-2,0,2,ctx.canvas.height);
 }
 
-function drawSignal(ctx,strength){
+function drawSignal(ctx, strength){
+  const bandHeight = 12;                 // épaisseur de la bande
+  const y = ctx.canvas.height/2 - bandHeight/2;
+
   ctx.fillStyle = '#0af';
-  ctx.fillRect(ctx.canvas.width-2,ctx.canvas.height-strength,2,strength);
+  ctx.fillRect(ctx.canvas.width - strength, y, strength, bandHeight);
 }
+
 
 setInterval(()=>{
   scroll(tx);
@@ -329,11 +336,14 @@ function createUserCanvas(sender){
 }
 
 function updateTranslation(sender){
+  if(!autoTranslate) return;
+
   const buf = userBuffers[sender];
   const div = document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
   const txt = buf.output.map(c=>translateMorse(c)).join('');
   div.innerHTML = `<strong>${sender}:</strong> ${txt}`;
 }
+
 
 // ================= EMISSION =================
 let letterTimer = null;
