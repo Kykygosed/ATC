@@ -341,13 +341,14 @@ function createUserCanvas(sender){
 }
 
 function updateTranslation(sender){
-  if(!autoTranslate) return;
+  if(!autoTranslate) return;   // ⬅️ LIGNE CRUCIALE
 
   const buf = userBuffers[sender];
   const div = document.getElementById(`receptionText-${sender}`) || createUserDiv(sender);
   const txt = buf.output.map(c=>translateMorse(c)).join('');
   div.innerHTML = `<strong>${sender}:</strong> ${txt}`;
 }
+
 
 
 // ================= EMISSION =================
