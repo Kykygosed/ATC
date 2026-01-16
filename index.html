@@ -161,40 +161,13 @@ input[type=range]::-webkit-slider-thumb{
 <div id="popup">
   <div>
     <input id="pseudoInput" placeholder="Pseudo"><br><br>
-<div style="text-align:center">
+<label>Fréquence</label><br>
+<input id="freqInput"
+       inputmode="numeric"
+       maxlength="6"
+       placeholder="122800">
+<small>Ex : 122800 → 122.800 MHz</small>
 
-  <div style="font-size:20px;margin-bottom:8px;">
-    Fréquence : <strong><span id="freqLabel">122.800</span> MHz</strong>
-  </div>
-
-  <div style="display:flex;justify-content:center;gap:40px;">
-
-    <!-- Knob MHz -->
-    <div>
-      <div>MHz</div>
-      <input type="range"
-             id="freqInt"
-             min="118"
-             max="137"
-             step="1"
-             value="122">
-      <div id="freqIntLabel">122</div>
-    </div>
-
-    <!-- Knob kHz -->
-    <div>
-      <div>kHz</div>
-      <input type="range"
-             id="freqDec"
-             min="0"
-             max="995"
-             step="5"
-             value="800">
-      <div id="freqDecLabel">800</div>
-    </div>
-
-  </div>
-</div>
 
 
     <button onclick="enterRadio()">Entrer</button>
@@ -327,6 +300,27 @@ function updateFreqDisplay() {
   freqLabel.textContent = val;
   freqDisplay.textContent = val + " MHz";
 }
+const freqInput = document.getElementById('freqInput');
+const freqDisplay = document.getElementById('freqDisplay');
+
+freqInput.addEventListener('input', () => {
+  // supprime tout sauf chiffres
+  let v = freqInput.value.replace(/\D/g, '');
+
+  // limite à 6 chiffres max (ex: 137000)
+  if(v.length > 6) v = v.slice(0,6);
+
+  freqInput.value = v;
+
+  // formatage automatique
+  if(v.length >= 3){
+    const mhz = v.slice(0,3);
+    const khz = v.slice(3).padEnd(3,'0');
+    const freqFormatted = `${mhz}.${khz}`;
+
+    freqDisplay.textContent = freqFormatted + " MHz";
+  }
+});
 
 // mise à jour quand on bouge le slider
 freqSlider.addEventListener('input', updateFreqDisplay);
@@ -420,11 +414,37 @@ setInterval(()=>{
 // ================= UI =================
 function enterRadio(){
   pseudo = document.getElementById('pseudoInput').value.trim();
-  freq = parseFloat(freqSlider.value).toFixed(3).replace(/\./g,'-'); // ex: 122.800 → 122-800
-  if(!pseudo || !freq) return;
-  document.getElementById('popup').style.display='none';
+
+  const raw = freqInput.value;
+
+  if(raw.length < 5){
+    alert("Fréquence invalide");
+    return;
+  }
+
+  const mhz = parseInt(raw.slice(0,3));
+  const khz = parseInt(raw.slice(3).padEnd(3,'0'));
+
+  const freqValue = mhz + khz / 1000;
+
+  // plage autorisée
+  if(freqValue < 118 || freqValue > 137){
+    alert("Fréquence hors plage (118.000 – 137.000)");
+    return;
+  }
+
+  // valeur utilisée par Firebase
+  freq = freqValue.toFixed(3).replace('.', '-');
+
+  // affichage UI
+  freqDisplay.textContent = freqValue.toFixed(3) + " MHz";
+
+  if(!pseudo) return;
+
+  document.getElementById('popup').style.display = 'none';
   if(!listening) startListening();
 }
+
 
 // ================= MORSE MAP =================
 const morseCodeMap = {
