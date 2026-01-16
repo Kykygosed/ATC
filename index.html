@@ -135,6 +135,24 @@ button{
   color:#fff;
   cursor:pointer;
 }
+  input[type=range]{
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  appearance:none;
+  background:radial-gradient(circle,#333,#111);
+  transform:rotate(-90deg);
+}
+
+input[type=range]::-webkit-slider-thumb{
+  appearance:none;
+  width:18px;
+  height:18px;
+  background:#0af;
+  border-radius:50%;
+  box-shadow:0 0 10px #0af;
+}
+
 </style>
 </head>
 
@@ -143,13 +161,41 @@ button{
 <div id="popup">
   <div>
     <input id="pseudoInput" placeholder="Pseudo"><br><br>
-    <label for="freqSlider">Fréquence : <span id="freqLabel">122.000</span> MHz</label><br>
+<div style="text-align:center">
 
-<div style="display:flex; align-items:center; gap:10px;">
-  <button id="freqMinus">- 1 MHz</button>
-  <input type="range" id="freqSlider" min="118" max="137" step="0.001" value="122">
-  <button id="freqPlus">+ 1 MHz</button>
+  <div style="font-size:20px;margin-bottom:8px;">
+    Fréquence : <strong><span id="freqLabel">122.800</span> MHz</strong>
+  </div>
+
+  <div style="display:flex;justify-content:center;gap:40px;">
+
+    <!-- Knob MHz -->
+    <div>
+      <div>MHz</div>
+      <input type="range"
+             id="freqInt"
+             min="118"
+             max="137"
+             step="1"
+             value="122">
+      <div id="freqIntLabel">122</div>
+    </div>
+
+    <!-- Knob kHz -->
+    <div>
+      <div>kHz</div>
+      <input type="range"
+             id="freqDec"
+             min="0"
+             max="995"
+             step="5"
+             value="800">
+      <div id="freqDecLabel">800</div>
+    </div>
+
+  </div>
 </div>
+
 
     <button onclick="enterRadio()">Entrer</button>
   </div>
@@ -212,6 +258,13 @@ let autoTranslate = true;   // ← ICI
 const freqSlider = document.getElementById('freqSlider');
 const freqLabel  = document.getElementById('freqLabel');
 const freqDisplay = document.getElementById('freqDisplay');
+const freqInt = document.getElementById('freqInt');
+const freqDec = document.getElementById('freqDec');
+
+const freqLabel = document.getElementById('freqLabel');
+const freqDisplay = document.getElementById('freqDisplay');
+
+
 
 
 
@@ -250,6 +303,25 @@ function playTone(freq, dur){
   osc.start();
   osc.stop(audioCtx.currentTime + dur / 1000);
 }
+  function updateFrequency(){
+  const mhz = parseInt(freqInt.value);
+  const khz = parseInt(freqDec.value);
+
+  const freqValue = (mhz + khz/1000).toFixed(3);
+
+  freqLabel.textContent = freqValue;
+  freqDisplay.textContent = freqValue + " MHz";
+
+  // valeur Firebase
+  freq = freqValue.replace('.', '-');
+}
+
+freqInt.addEventListener('input', updateFrequency);
+freqDec.addEventListener('input', updateFrequency);
+
+// init
+updateFrequency();
+  
 function updateFreqDisplay() {
   const val = parseFloat(freqSlider.value).toFixed(3);
   freqLabel.textContent = val;
