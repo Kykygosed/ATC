@@ -266,30 +266,7 @@ function playTone(freq, dur){
   osc.start();
   osc.stop(audioCtx.currentTime + dur / 1000);
 }
-  function updateFrequency(){
-  const mhz = parseInt(freqInt.value);
-  const khz = parseInt(freqDec.value);
-
-  const freqValue = (mhz + khz/1000).toFixed(3);
-
-  freqLabel.textContent = freqValue;
-  freqDisplay.textContent = freqValue + " MHz";
-
-  // valeur Firebase
-  freq = freqValue.replace('.', '-');
-}
-
-freqInt.addEventListener('input', updateFrequency);
-freqDec.addEventListener('input', updateFrequency);
-
-// init
-updateFrequency();
   
-function updateFreqDisplay() {
-  const val = parseFloat(freqSlider.value).toFixed(3);
-  freqLabel.textContent = val;
-  freqDisplay.textContent = val + " MHz";
-}
 const freqInput = document.getElementById('freqInput');
 const freqDisplay = document.getElementById('freqDisplay');
 
